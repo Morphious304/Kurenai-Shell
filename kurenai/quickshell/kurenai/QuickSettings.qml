@@ -577,6 +577,22 @@ PanelOverlay {
                     }
                 }
 
+                Row {       // app colours (kitty, gtk, qt, ...): only when at least one is attached with kurenai-ctl
+                    visible: ThemeCtl.available && ThemeCtl.extras !== ""
+                    width: parent.width
+                    spacing: Theme.s2
+                    Btn {
+                        width: themeTiles.tileW
+                        height: 64
+                        stacked: true
+                        icon: Theme.icons.image
+                        text: "App colours"
+                        subtext: ThemeCtl.extrasFollow ? ThemeCtl.extras.replace(/,/g, " ") : "Paused"
+                        checked: ThemeCtl.extrasFollow
+                        onClicked: ThemeCtl.toggleExtrasFollow()
+                    }
+                }
+
                 Text {      // the reason, when the last attempt failed
                     visible: ThemeCtl.available && ThemeCtl.error !== ""
                     width: parent.width

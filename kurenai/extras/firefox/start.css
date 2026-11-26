@@ -1,0 +1,50 @@
+/* KURENAI start page (a local page: set it as your Firefox Home page, see docs/FIREFOX.md). Colours come from start-colors.css. */
+:root {
+  color-scheme: dark;
+  --line: color-mix(in srgb, var(--kn-text) 12%, transparent);
+  --panel: color-mix(in srgb, var(--kn-bg) 96%, transparent);
+  --panel-line: color-mix(in srgb, var(--kn-text) 24%, transparent);
+  --page: color-mix(in srgb, var(--kn-bg) 78%, black);
+  --jp: "Noto Serif JP", "Noto Serif CJK JP", serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: radial-gradient(900px 420px at 50% -6%, color-mix(in srgb, var(--kn-accent) 12%, transparent), transparent 70%), var(--page);
+  color: var(--kn-text);
+  font: 14px/1.5 "Adwaita Sans", Inter, system-ui, sans-serif;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 24px 24px 56px; overflow: hidden; position: relative;
+}
+.clock { font-size: 92px; line-height: 1; font-weight: 300; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.date { margin-top: 10px; font-size: 12px; font-weight: 500; letter-spacing: 0.22em; text-transform: uppercase; color: var(--kn-text2); }
+.vk { position: absolute; right: 28px; top: 26px; writing-mode: vertical-rl; font: 500 15px/1 var(--jp); letter-spacing: 0.3em; color: var(--kn-muted); }
+form { margin: 34px 0 0; width: min(560px, 88%); }
+.sc {
+  display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 16px; border-radius: 14px;
+  background: var(--panel); border: 1px solid var(--panel-line); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+.sc:focus-within { border-color: var(--kn-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--kn-accent) 26%, transparent); }
+.sc svg { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--kn-text2); stroke-width: 2; stroke-linecap: round; }
+.sc input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--kn-text); font: inherit; font-size: 14px; }
+.sc input::placeholder { color: var(--kn-muted); }
+.links { margin-top: 34px; display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+.lk { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 76px; color: var(--kn-text2); font-size: 11.5px; text-decoration: none; }
+.lk i {
+  width: 62px; height: 62px; border-radius: 12px; display: grid; place-items: center; font-style: normal;
+  font: 500 26px/1 var(--jp); color: var(--kn-accent-text); background: var(--kn-surface); border: 1px solid var(--line);
+  transition: border-color 0.12s, transform 0.12s;
+}
+.lk:hover i, .lk:focus-visible i { border-color: var(--kn-accent); transform: translateY(-2px); }
+.lk:focus-visible { outline: 2px solid var(--kn-accent); outline-offset: 4px; border-radius: 8px; }
+.petal {
+  position: absolute; top: -24px; left: var(--x); width: 9px; height: 12px; border-radius: 80% 0 80% 0; pointer-events: none;
+  background: color-mix(in srgb, var(--kn-accent) 42%, transparent); opacity: 0.7;
+  animation: fall var(--d) linear infinite; animation-delay: var(--w);
+}
+@keyframes fall {
+  0% { transform: translate(0, -30px) rotate(var(--r)); }
+  50% { transform: translate(34px, 45vh) rotate(calc(var(--r) + 160deg)); }
+  100% { transform: translate(-8px, 110vh) rotate(calc(var(--r) + 320deg)); }
+}
+@media (prefers-reduced-motion: reduce) { .petal { animation: none; top: calc(var(--y) * 1%); } }

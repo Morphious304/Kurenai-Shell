@@ -119,6 +119,8 @@ Usage: kurenai-ctl <command>
   theme contrast N   -1 .. 1 (0 = standard)         theme accent wallpaper|vermilion   (vermilion = only neutrals follow)
   theme hypr on|off  Hyprland borders follow too     theme rofi on|off   Rofi theme follows too
   theme reset        built-in colours everywhere and forget the theme settings
+  theme extras       app colours (kitty gtk qt btop yazi zathura nvim spicetify firefox): state; also: extras apply|follow on|off|reset
+  theme extra <name> on|off   attach / detach one app (on = one-time setup in that app's config after a backup, then colours)
   theme-apply [--auto] <image>   recolour from a specific image (the Walls tab calls this)
 
  Undo
@@ -438,6 +440,7 @@ cmd_theme_apply() {
   theme_put "$THEME_PAL" "$next/palette.json"          # last: the shell and the lock screen switch now
   printf '%s\n' "$img" > "$THEME_SRC"
   [ "$hypr_changed" = 1 ] && theme_hypr_reload
+  theme_extras_apply auto || true                      # kitty, gtk, qt ... (only the ones you attached)
   [ "$auto" = 1 ] || echo "colours updated from: $img  (scheme-$type, $(theme_matugen_version))"
   return 0
 }
@@ -475,6 +478,7 @@ cmd_theme() {
       echo "  source:    $(cat "$THEME_SRC" 2>/dev/null || echo none)"
       echo "  palette:   $(grep -q '"enabled": true' "$THEME_PAL" 2>/dev/null && echo 'in use' || echo 'built-in KURENAI colours')   ($THEME_PAL)"
       echo "  templates: $([ -f "$THEME_TPL/palette.json.tpl" ] && echo installed || echo "MISSING (re-run install.sh)")"
+      echo "  app colours attached: $(extras_list | sed 's/,/, /g; s/^$/none/')   (kurenai-ctl theme extras)"
       ;;
     on)
       have matugen || die "matugen is not installed (sudo pacman -S matugen)"
@@ -485,16 +489,20 @@ cmd_theme() {
     off)
       theme_set enabled 0
       theme_restore_defaults
-      echo "wallpaper colours: off (built-in KURENAI colours restored in the shell, lock screen, Rofi and Hyprland)"
+      theme_extras_apply || true
+      echo "wallpaper colours: off (built-in KURENAI colours restored in the shell, lock screen, Rofi and Hyprland, and in any attached app colours)"
       ;;
     reset)
       theme_set enabled 0
       theme_restore_defaults
+      cmd_theme_extras reset
       rm -f "$THEME_CONF" "$THEME_SRC" "$STATE/matugen.toml"
       rm -rf "$STATE/next"
       echo "wallpaper colours reset: built-in colours restored and theme settings forgotten"
       ;;
     sync) cmd_theme_sync --force ;;
+    extras) cmd_theme_extras "$@" ;;
+    extra)  cmd_theme_extra "$@" ;;
     type)
       local t="${1:-}"
       if [ "$t" = "next" ]; then
@@ -524,7 +532,7 @@ cmd_theme() {
         cmd_theme_sync --force --auto || true
       fi
       ;;
-    *) die "usage: kurenai-ctl theme [status|on|off|reset|sync|type <name|next>|contrast <-1..1>|accent wallpaper|vermilion|hypr on|off|rofi on|off]" ;;
+    *) die "usage: kurenai-ctl theme [status|on|off|reset|sync|type <name|next>|contrast <-1..1>|accent wallpaper|vermilion|hypr on|off|rofi on|off|extras|extra <name> on|off]" ;;
   esac
 }
 
@@ -539,6 +547,555 @@ theme_restore_defaults_part() {
       [ -f "$THEME_TPL/kurenai.default.rasi" ] && [ -d "$CFG/rofi/themes" ] && cp "$THEME_TPL/kurenai.default.rasi" "$CFG/rofi/themes/kurenai.rasi" ;;
   esac
   return 0
+}
+
+# ------------------------------------------------------------------ app colours ("extras"): kitty gtk qt btop yazi zathura nvim spicetify firefox
+# Each extra is a few templates (~/.local/share/kurenai/extras/<name>/) filled from the SAME colours the shell uses
+# (palette.json, or the built-in KURENAI colours when wallpaper colours are off), so apps and shell always match.
+#   theme extra <name> on   : one-time setup (a marked block / one setting in that app's own config, after a backup), then colours
+#   theme extra <name> off  : undo that setup and delete the generated files: the app goes back to your own look
+#   theme extras            : state of all of them        theme extras reset : detach every extra
+# Generated files are only ever written to places named in the extra's MANIFEST.
+EXTRAS_ALL="kitty gtk qt btop yazi zathura nvim spicetify firefox"
+EXTRAS_DIR="$STATE/extras"
+
+extra_known()    { case " $EXTRAS_ALL " in *" $1 "*) return 0 ;; esac; return 1; }
+extras_list()    { theme_get extras ""; }
+extra_attached() { case ",$(extras_list)," in *",$1,"*) return 0 ;; esac; return 1; }
+extras_save() {  # extras_save "a b c" -> theme.conf extras=a,b,c (in canonical order)
+  local out="" x
+  for x in $EXTRAS_ALL; do case " $1 " in *" $x "*) out="${out:+$out,}$x" ;; esac; done
+  theme_set extras "$out"
+}
+extra_attach() { extra_attached "$1" || extras_save "$(extras_list | tr ',' ' ') $1"; }
+extra_detach() { local x l=""; for x in $(extras_list | tr ',' ' '); do [ "$x" = "$1" ] || l="$l $x"; done; extras_save "$l"; }
+
+ex_path() {
+  local p="${1//@CFG@/$CFG}"; p="${p//@DATA@/${XDG_DATA_HOME:-$HOME/.local/share}}"
+  case "$p" in *@FFPROFILE@*) p="${p//@FFPROFILE@/$(firefox_profile_dir 2>/dev/null || printf '%s' /nonexistent-firefox-profile)}" ;; esac
+  printf '%s' "$p"
+}
+
+# ---- managed blocks inside a file you own (kitty.conf, gtk.css, ...)
+ex_mark() {   # ex_mark begin|end hash|css
+  case "$2:$1" in
+    css:begin) printf '%s' '/* >>> KURENAI colours (kurenai-ctl theme): managed block, do not edit >>> */' ;;
+    css:end)   printf '%s' '/* <<< KURENAI colours <<< */' ;;
+    js:begin)  printf '%s' '// >>> KURENAI colours (kurenai-ctl theme): managed block, do not edit >>>' ;;
+    js:end)    printf '%s' '// <<< KURENAI colours <<<' ;;
+    *:begin)   printf '%s' '# >>> KURENAI colours (kurenai-ctl theme): managed block, do not edit >>>' ;;
+    *:end)     printf '%s' '# <<< KURENAI colours <<<' ;;
+  esac
+}
+ex_has_block() { [ -f "$1" ] && grep -qF "$(ex_mark begin "$2")" "$1"; }
+ex_backup() {   # copy a file of yours aside before the first change
+  [ -f "$1" ] || return 0
+  ex_has_block "$1" hash && return 0; ex_has_block "$1" css && return 0; ex_has_block "$1" js && return 0
+  mkdir -p "$EXTRAS_DIR/backup"
+  cp -p "$1" "$EXTRAS_DIR/backup/$(basename "$1").$(stamp)" 2>/dev/null || true
+}
+ex_block_put() {   # ex_block_put FILE STYLE CONTENTFILE : replace (or add) the managed block; the rest of the file is untouched
+  local f="$1" style="$2" content="$3" b e tmp
+  b="$(ex_mark begin "$style")"; e="$(ex_mark end "$style")"
+  mkdir -p "$(dirname "$f")"
+  tmp="$(mktemp "$STATE/next/blk.XXXXXX")"
+  if [ ! -f "$f" ]; then
+    { printf '%s\n' "$b"; cat "$content"; printf '%s\n' "$e"; } > "$tmp"
+  elif ex_has_block "$f" "$style"; then
+    awk -v b="$b" -v e="$e" -v cf="$content" 'BEGIN{while((getline l<cf)>0) c=c l "\n"} index($0,b){printf "%s\n%s%s\n",b,c,e; skip=1; next} skip&&index($0,e){skip=0; next} !skip{print}' "$f" > "$tmp"
+  else
+    ex_backup "$f"
+    { cat "$f"; [ -s "$f" ] && [ "$(tail -c1 "$f" | wc -l)" = 0 ] && echo; [ -s "$f" ] && echo; printf '%s\n' "$b"; cat "$content"; printf '%s\n' "$e"; } > "$tmp"
+  fi
+  cat "$tmp" > "$f"; rm -f "$tmp"        # in place: keeps symlinks (dotfile managers) and permissions
+}
+ex_block_put_top() {   # ex_block_put_top FILE STYLE CONTENTFILE : like ex_block_put, but a new block goes to the very top of the file
+  local f="$1" style="$2" content="$3" b e tmp
+  b="$(ex_mark begin "$style")"; e="$(ex_mark end "$style")"
+  mkdir -p "$(dirname "$f")"
+  tmp="$(mktemp "$STATE/next/blk.XXXXXX")"
+  if [ ! -f "$f" ]; then
+    { printf '%s\n' "$b"; cat "$content"; printf '%s\n' "$e"; } > "$tmp"
+  elif ex_has_block "$f" "$style"; then
+    awk -v b="$b" -v e="$e" -v cf="$content" 'BEGIN{while((getline l<cf)>0) c=c l "\n"} index($0,b){printf "%s\n%s%s\n",b,c,e; skip=1; next} skip&&index($0,e){skip=0; next} !skip{print}' "$f" > "$tmp"
+  else
+    ex_backup "$f"
+    { printf '%s\n' "$b"; cat "$content"; printf '%s\n' "$e"; cat "$f"; } > "$tmp"
+  fi
+  cat "$tmp" > "$f"; rm -f "$tmp"
+}
+ex_block_remove() {   # ex_block_remove FILE STYLE : drop the managed block (and a file that held only that block)
+  local f="$1" style="$2" b e tmp
+  ex_has_block "$f" "$style" || return 0
+  b="$(ex_mark begin "$style")"; e="$(ex_mark end "$style")"
+  tmp="$(mktemp "$STATE/next/blk.XXXXXX")"
+  # also drop the one blank line that was added in front of the block, so the file is back to exactly what it was
+  awk -v b="$b" -v e="$e" 'skip{ if(index($0,e)) skip=0; next }
+    index($0,b){ if(held>0) held--; skip=1; next }
+    $0==""{ held++; next }
+    { while(held>0){ print ""; held-- } print }
+    END{ while(held>0){ print ""; held-- } }' "$f" > "$tmp"
+  if ! grep -q '[^[:space:]]' "$tmp"; then rm -f "$f"; else cat "$tmp" > "$f"; fi
+  rm -f "$tmp"
+}
+
+# ---- tiny INI helpers (qt5ct.conf / qt6ct.conf): set or remove one key in one section, rest untouched
+ex_ini_get() { awk -v sec="[$2]" -v key="$3" '$0==sec{i=1;next} /^\[/{i=0} i&&index($0,key"=")==1{print substr($0,length(key)+2); exit}' "$1" 2>/dev/null; }
+ex_ini_set() {   # file section key value
+  local f="$1" tmp; tmp="$(mktemp "$STATE/next/ini.XXXXXX")"
+  mkdir -p "$(dirname "$f")"; [ -f "$f" ] || : > "$f"
+  awk -v sec="[$2]" -v key="$3" -v val="$4" '
+    $0==sec{seen=1; ins=1; print; next}
+    /^\[/{ if(ins&&!done){print key"="val; done=1}; ins=0 }
+    ins&&index($0,key"=")==1{ if(!done){print key"="val; done=1}; next }
+    {print}
+    END{ if(ins&&!done) print key"="val; else if(!seen){ if(NR) print ""; print sec; print key"="val } }' "$f" > "$tmp"
+  cat "$tmp" > "$f"; rm -f "$tmp"
+}
+ex_ini_unset() { local f="$1" tmp; [ -f "$f" ] || return 0; tmp="$(mktemp "$STATE/next/ini.XXXXXX")"
+  awk -v sec="[$2]" -v key="$3" '$0==sec{i=1;print;next} /^\[/{i=0} i&&index($0,key"=")==1{next} {print}' "$f" > "$tmp"; cat "$tmp" > "$f"; rm -f "$tmp"; }
+
+# ---- colours: the table every template is filled from
+extras_make_tokens() {   # extras_make_tokens OUTFILE  (palette.json when wallpaper colours are on, else the built-in colours)
+  local raw="$STATE/next/tokens.raw" k v pin=0
+  mkdir -p "$STATE/next"
+  cat > "$raw" <<'EOT'
+bg #242424
+surface #30302F
+raised #3A3535
+text #F4E8BE
+text2 #D8CFB3
+muted #A8A393
+accent #F04436
+accentText #FF6B5C
+accentDeep #B8281E
+inkOnAccent #1A1A1A
+teal #70A6A0
+rose #C98DB5
+EOT
+  if theme_enabled && [ -s "$THEME_PAL" ] && grep -q '"enabled": true' "$THEME_PAL"; then
+    grep -q '"pinAccent": true' "$THEME_PAL" && pin=1
+    for k in bg surface raised text text2 muted accent accentText accentDeep inkOnAccent teal rose; do
+      if [ "$pin" = 1 ]; then case " accent accentText accentDeep inkOnAccent teal rose " in *" $k "*) continue ;; esac; fi
+      v="$(sed -n "s/.*\"$k\": *\"\(#[0-9A-Fa-f]\{6\}\)\".*/\1/p" "$THEME_PAL" | head -n 1)"
+      [ -n "$v" ] && printf '%s %s\n' "$k" "$v" >> "$raw"       # later line wins in tokens.awk
+    done
+  fi
+  awk -f "$EXTRAS_DIR/tokens.awk" "$raw" > "$1"
+}
+
+# ---- one extra: fill its templates and put the results where they belong. Sets EX_CHANGED=1 if anything changed.
+EX_CHANGED=0
+extra_post_qt() {   # make the number of colours match what this machine's qt6ct/qt5ct ships (a different count is ignored by qt)
+  local f="$1" tpl="$2" dir sample n
+  case "$tpl" in qt6ct*) dir=/usr/share/qt6ct/colors ;; *) dir=/usr/share/qt5ct/colors ;; esac
+  sample="$(ls "$dir"/*.conf 2>/dev/null | head -n 1)"; [ -n "$sample" ] || return 0
+  n="$(grep -m1 '^active_colors=' "$sample" | tr ',' '\n' | wc -l)"; [ "$n" -ge 15 ] 2>/dev/null || return 0
+  awk -v m="$n" 'BEGIN{FS=OFS="="} /^(active|inactive|disabled)_colors=/{ k=$1; v=substr($0,length($1)+2); c=split(v,a,","); out=""; for(i=1;i<=m;i++){ x=(i<=c)?a[i]:a[c]; out=out (i>1?",":"") x }; print k"="out; next } {print}' "$f" > "$f.n" && cat "$f.n" > "$f"; rm -f "$f.n"
+}
+extra_post_yazi() {   # yazi before 25.5 calls the [mgr] section [manager]
+  local v major minor; v="$(yazi --version 2>/dev/null | grep -o '[0-9][0-9]*\.[0-9][0-9]*' | head -n 1)"
+  [ -n "$v" ] || return 0; major="${v%%.*}"; minor="${v#*.}"
+  if [ "$major" -lt 25 ] 2>/dev/null || { [ "$major" -eq 25 ] && [ "$minor" -lt 5 ]; }; then sed -i 's/^\[mgr\]/[manager]/' "$1"; fi
+}
+extra_render() {   # extra_render NAME TOKENFILE
+  local name="$1" tok="$2" mf="$EXTRAS_DIR/$1/MANIFEST" kind tpl dest style tmp before after
+  [ -f "$mf" ] || { echo "extra $name: templates missing in $EXTRAS_DIR/$name (re-run install.sh)" >&2; return 1; }
+  while IFS='|' read -r kind tpl dest style; do
+    case "$kind" in ''|\#*) continue ;; esac
+    dest="$(ex_path "$dest")"
+    case "$dest" in /nonexistent-firefox-profile*) echo "extra $name: Firefox profile not found, nothing written (check: kurenai-ctl theme extra firefox status)" >&2; return 1 ;; esac
+    if [ "$kind" = once ] && [ -e "$dest" ]; then continue; fi
+    tmp="$(mktemp "$STATE/next/ex.XXXXXX")"
+    if ! awk -v tokens="$tok" -f "$EXTRAS_DIR/render.awk" "$EXTRAS_DIR/$name/$tpl" > "$tmp" 2>"$tmp.err" || grep -q '{{' "$tmp" || [ ! -s "$tmp" ]; then
+      echo "extra $name: could not render $tpl: $(head -n 1 "$tmp.err")" >&2; rm -f "$tmp" "$tmp.err"; return 1
+    fi
+    rm -f "$tmp.err"
+    command -v "extra_post_$name" >/dev/null 2>&1 && "extra_post_$name" "$tmp" "$tpl"
+    mkdir -p "$(dirname "$dest")"
+    case "$kind" in
+      block) before=none; [ -f "$dest" ] && before="$(cksum < "$dest")"
+             ex_block_put "$dest" "$style" "$tmp"; after="$(cksum < "$dest")"
+             [ "$before" = "$after" ] || EX_CHANGED=1 ;;
+      *)     if ! cmp -s "$tmp" "$dest" 2>/dev/null; then cat "$tmp" > "$dest"; EX_CHANGED=1; fi ;;
+    esac
+    rm -f "$tmp"
+  done < "$mf"
+  return 0
+}
+extra_reload() {   # only when the colours really changed; never fails
+  case "$1" in
+    kitty) have pkill && pkill -USR1 -x kitty 2>/dev/null ;;
+    btop)  have pkill && pkill -USR2 -x btop 2>/dev/null ;;
+    gtk)   if have gsettings && [ "$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null)" = "'adw-gtk3-dark'" ]; then
+             gsettings set org.gnome.desktop.interface gtk-theme '' 2>/dev/null; gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark 2>/dev/null
+           fi ;;
+  esac
+  return 0
+}
+
+# re-render every attached extra (called after each wallpaper change, `theme on/off` and the installer)
+theme_extras_apply() {   # [auto]  auto = respect `theme extras follow off`
+  local l n tok="$STATE/next/tokens.eff" err
+  l="$(extras_list)"; [ -n "$l" ] || return 0
+  [ -f "$EXTRAS_DIR/tokens.awk" ] || return 0
+  if [ "${1:-}" = auto ] && [ "$(theme_get extras_follow 1)" != 1 ]; then return 0; fi
+  mkdir -p "$STATE/next"
+  if ! err="$(extras_make_tokens "$tok" 2>&1)"; then echo "app colours not updated (the previous colours stay): $(printf '%s' "$err" | head -n 3 | tr '\n' ';')" >&2; return 1; fi
+  for n in $(printf '%s' "$l" | tr ',' ' '); do
+    extra_known "$n" || continue
+    EX_CHANGED=0
+    if extra_render "$n" "$tok" && [ "$EX_CHANGED" = 1 ]; then extra_reload "$n"; fi
+  done
+  return 0
+}
+
+# ---- one-time setup per extra (what `theme extra NAME on` does besides writing colours) -------------------------------
+ex_need() { have "$1" || die "$1 is not installed ($2). Nothing was changed."; }
+extra_setup_kitty() {
+  ex_need kitty "sudo pacman -S kitty"
+  local f="$CFG/kitty/kitty.conf" c; c="$(mktemp "$STATE/next/blk.XXXXXX")"
+  echo 'include kurenai-colors.conf' > "$c"; ex_block_put "$f" hash "$c"; rm -f "$c"
+  echo "  kitty.conf: one managed block added at the END (last setting wins), your own colour theme above it stays as it is."
+  echo "  background_opacity / blur / fonts are not touched. Open windows reload by themselves (SIGUSR1)."
+}
+extra_teardown_kitty() { ex_block_remove "$CFG/kitty/kitty.conf" hash; rm -f "$CFG/kitty/kurenai-colors.conf"; have pkill && pkill -USR1 -x kitty 2>/dev/null; return 0; }
+
+extra_setup_gtk() {
+  local t=/usr/share/themes/adw-gtk3-dark d="${XDG_DATA_HOME:-$HOME/.local/share}/themes/adw-gtk3-dark"
+  [ -d "$t" ] || [ -d "$d" ] || die "the adw-gtk3 theme is not installed (sudo pacman -S adw-gtk-theme). Nothing was changed."
+  if have gsettings; then
+    local cur; cur="$(gsettings get org.gnome.desktop.interface gtk-theme 2>/dev/null | tr -d "'")"
+    mkdir -p "$EXTRAS_DIR"
+    [ "$cur" = adw-gtk3-dark ] || [ -f "$EXTRAS_DIR/gtk.prev-theme" ] || printf '%s\n' "$cur" > "$EXTRAS_DIR/gtk.prev-theme"
+    gsettings set org.gnome.desktop.interface gtk-theme adw-gtk3-dark 2>/dev/null
+    gsettings set org.gnome.desktop.interface color-scheme prefer-dark 2>/dev/null
+    echo "  GTK theme: ${cur:-unset} -> adw-gtk3-dark (the old value is saved; 'theme extra gtk off' puts it back)"
+  else
+    echo "  gsettings not found: select the adw-gtk3-dark theme yourself (nwg-look)"
+  fi
+  echo "  Colours go into a managed block in ~/.config/gtk-4.0/gtk.css and gtk-3.0/gtk.css. Apps that are already open"
+  echo "  need a restart (GTK3 apps are nudged to reload). Flatpak apps do not see ~/.config/gtk-*: see docs/THEME.md."
+}
+extra_teardown_gtk() {
+  ex_block_remove "$CFG/gtk-4.0/gtk.css" css; ex_block_remove "$CFG/gtk-3.0/gtk.css" css
+  if [ -f "$EXTRAS_DIR/gtk.prev-theme" ] && have gsettings; then
+    gsettings set org.gnome.desktop.interface gtk-theme "$(cat "$EXTRAS_DIR/gtk.prev-theme")" 2>/dev/null; rm -f "$EXTRAS_DIR/gtk.prev-theme"
+  fi
+  return 0
+}
+
+extra_setup_qt() {
+  have qt6ct || have qt5ct || die "neither qt6ct nor qt5ct is installed (sudo pacman -S qt6ct). Nothing was changed."
+  local v d f prev
+  for v in 6 5; do
+    have "qt${v}ct" || continue
+    f="$CFG/qt${v}ct/qt${v}ct.conf"; prev="$EXTRAS_DIR/qt${v}ct.prev"
+    ex_backup "$f"
+    if [ ! -f "$prev" ]; then
+      { echo "custom_palette=$(ex_ini_get "$f" Appearance custom_palette)"; echo "color_scheme_path=$(ex_ini_get "$f" Appearance color_scheme_path)"; } > "$prev"
+    fi
+    ex_ini_set "$f" Appearance custom_palette true
+    ex_ini_set "$f" Appearance color_scheme_path "$CFG/qt${v}ct/colors/kurenai.conf"
+    echo "  qt${v}ct.conf: custom_palette=true, color_scheme_path=$CFG/qt${v}ct/colors/kurenai.conf   (style: $(ex_ini_get "$f" Appearance style))"
+    case "$(ex_ini_get "$f" Appearance style | tr 'A-Z' 'a-z')" in *kvantum*) echo "  NOTE: qt${v}ct uses the Kvantum style, which brings its own colours and ignores this scheme. Pick the Fusion style in qt${v}ct to see the wallpaper colours.";; esac
+  done
+  printf 'qt6ct\n' > "$STATE/qt-env"
+  echo "  Qt reads its platform theme from QT_QPA_PLATFORMTHEME (now: '${QT_QPA_PLATFORMTHEME:-unset}'). kurenai.lua sets it to qt6ct from the next"
+  echo "  Hyprland config load; apps started before that, and Qt5 apps (they need 'qt5ct'), are not affected. If nothing changes, log out and in."
+}
+extra_teardown_qt() {
+  local v f p
+  for v in 6 5; do
+    f="$CFG/qt${v}ct/qt${v}ct.conf"; p="$EXTRAS_DIR/qt${v}ct.prev"
+    if [ -f "$p" ] && [ -f "$f" ]; then
+      for key in custom_palette color_scheme_path; do
+        val="$(sed -n "s/^$key=//p" "$p" | head -n 1)"
+        if [ -n "$val" ]; then ex_ini_set "$f" Appearance "$key" "$val"; else ex_ini_unset "$f" Appearance "$key"; fi
+      done
+    fi
+    rm -f "$p" "$CFG/qt${v}ct/colors/kurenai.conf"
+  done
+  rm -f "$STATE/qt-env"; return 0
+}
+
+extra_setup_btop() {
+  ex_need btop "sudo pacman -S btop"
+  local f="$CFG/btop/btop.conf" prev="$EXTRAS_DIR/btop.prev"
+  mkdir -p "$CFG/btop" "$EXTRAS_DIR"; ex_backup "$f"
+  [ -f "$prev" ] || { grep -m1 '^color_theme' "$f" 2>/dev/null | sed 's/^color_theme *= *//' > "$prev" || true; [ -f "$prev" ] || : > "$prev"; }
+  if [ -f "$f" ] && grep -q '^color_theme' "$f"; then sed -i 's|^color_theme *=.*|color_theme = "kurenai"|' "$f"
+  else printf 'color_theme = "kurenai"\n' >> "$f"; fi
+  echo "  btop.conf: color_theme = \"kurenai\" (was: $(cat "$prev"))   Running btop windows reload by themselves (SIGUSR2). Background stays transparent."
+}
+extra_teardown_btop() {
+  local f="$CFG/btop/btop.conf" prev="$EXTRAS_DIR/btop.prev" v
+  if [ -f "$f" ] && [ -f "$prev" ]; then v="$(cat "$prev")"; [ -n "$v" ] || v='"Default"'; sed -i "s|^color_theme *=.*|color_theme = $v|" "$f"; fi
+  rm -f "$prev" "$CFG/btop/themes/kurenai.theme"; have pkill && pkill -USR2 -x btop 2>/dev/null; return 0
+}
+
+extra_setup_yazi() {
+  ex_need yazi "sudo pacman -S yazi"
+  local f="$CFG/yazi/theme.toml" c; c="$(mktemp "$STATE/next/blk.XXXXXX")"
+  if [ -f "$f" ] && grep -q '^\[flavor\]' "$f" && ! ex_has_block "$f" hash; then
+    echo "  $f already has a [flavor] section, so I left it alone. Set it yourself:   dark = \"kurenai\"   light = \"kurenai\""
+  else
+    printf '[flavor]\ndark = "kurenai"\nlight = "kurenai"\n' > "$c"; ex_block_put "$f" hash "$c"
+    echo "  theme.toml: managed [flavor] block added (flavor 'kurenai')."
+  fi
+  rm -f "$c"
+  echo "  Yazi reads its theme at start: restart open yazi windows. If yazi complains about the flavor (for example a missing file), run 'kurenai-ctl theme extra yazi off' and tell me the message."
+}
+extra_teardown_yazi() { ex_block_remove "$CFG/yazi/theme.toml" hash; rm -rf "$CFG/yazi/flavors/kurenai.yazi"; return 0; }
+
+extra_setup_zathura() {
+  ex_need zathura "sudo pacman -S zathura"
+  local c; c="$(mktemp "$STATE/next/blk.XXXXXX")"; echo 'include kurenai-colors' > "$c"
+  ex_block_put "$CFG/zathura/zathurarc" hash "$c"; rm -f "$c"
+  echo "  zathurarc: managed block 'include kurenai-colors' added. New zathura windows use it; open ones keep their colours."
+}
+extra_teardown_zathura() { ex_block_remove "$CFG/zathura/zathurarc" hash; rm -f "$CFG/zathura/kurenai-colors"; return 0; }
+
+extra_setup_nvim() {
+  ex_need nvim "sudo pacman -S neovim"
+  echo "  Installed: a 'kurenai' colorscheme and a small watcher (nvim/plugin/kurenai-watch.lua) that reloads it when the colours change."
+  echo "  Your Neovim config is NOT edited. Turn it on yourself, in init.lua:   vim.cmd.colorscheme(\"kurenai\")   (or try it with :colorscheme kurenai)"
+  echo "  The editor background is transparent (matches a translucent terminal). Solid: put  vim.g.kurenai_transparent = false  before that line."
+}
+extra_teardown_nvim() { rm -f "$CFG/nvim/colors/kurenai.lua" "$CFG/nvim/plugin/kurenai-watch.lua"; return 0; }
+
+extra_setup_spicetify() {
+  ex_need spicetify "AUR: spicetify-cli"
+  echo "  Installed: a 'kurenai' Spicetify theme (colours only). I do NOT run spicetify for you, because applying patches Spotify. To use it:"
+  echo "    spicetify config current_theme kurenai        (if the colours do not change, also match color_scheme to the [base] section in color.ini)"
+  echo "    close Spotify, then:  spicetify apply         (repeat after a colour change; the new colours show only after apply)"
+}
+extra_teardown_spicetify() {
+  local d="$CFG/spicetify/Themes/kurenai"
+  rm -f "$d/color.ini"
+  # user.css is written once and may hold your own tweaks: it is removed only when it is still exactly what we wrote
+  if [ -f "$d/user.css" ] && cmp -s "$d/user.css" "$EXTRAS_DIR/spicetify/user.css.tpl"; then rm -f "$d/user.css"; fi
+  rmdir "$d" 2>/dev/null
+  echo "  (if Spicetify still points at 'kurenai': spicetify config current_theme <your theme>; spicetify apply)"; return 0; }
+
+
+# ---- Firefox -----------------------------------------------------------------------------------------------------------
+# What `theme extra firefox on` changes, in your Firefox profile (found from profiles.ini, or given with --profile DIR):
+#   chrome/userChrome.css   one managed block at the very top: @import url("kurenai/kurenai.css");   (your own rules stay below it)
+#   chrome/userContent.css  one managed block at the very top: @import for Firefox's own pages (about:newtab, about:home, ...)
+#   user.js                 one managed block: toolkit.legacyUserProfileCustomizations.stylesheets = true (Firefox ignores the two
+#                           files above without it), and, only after `home on`, browser.startup.homepage = the start page
+#   chrome/kurenai/         the generated colours + stylesheets (deleted again by `off`)
+#   ~/.local/share/kurenai/firefox/   the start page (a local page: clock, search, tiles)
+# The optional script layer (`script on`) copies ONE file, kurenai.uc.js, into chrome/JS/ and only when fx-autoconfig is installed.
+# Nothing here ever writes to /usr or needs root. Firefox reads all of this at start-up: restart it to see a change.
+firefox_roots() { printf '%s\n' "$CFG/mozilla/firefox" "$HOME/.mozilla/firefox"; }
+firefox_ini_default() {   # firefox_ini_default ROOT : the default profile's folder from ROOT/profiles.ini; prints nothing if unclear
+  local root="$1" ini="$1/profiles.ini" out isrel path
+  [ -f "$ini" ] || return 1
+  out="$(awk -F= '
+    { sub(/\r$/, "") }
+    /^\[/ { sec = $0; if (sec ~ /^\[Profile/) { n++; p[n] = ""; r[n] = 1; d[n] = 0 } next }
+    sec ~ /^\[Install/ && $1 == "Default" && inst == "" { inst = substr($0, index($0, "=") + 1); next }
+    sec ~ /^\[Profile/ && $1 == "Path" { p[n] = substr($0, index($0, "=") + 1); next }
+    sec ~ /^\[Profile/ && $1 == "IsRelative" { r[n] = $2 + 0; next }
+    sec ~ /^\[Profile/ && $1 == "Default" { d[n] = $2 + 0; next }
+    END {
+      if (inst != "") { printf "1\t%s\n", inst; exit }
+      for (i = 1; i <= n; i++) if (d[i] == 1) { printf "%s\t%s\n", r[i], p[i]; exit }
+      if (n == 1) printf "%s\t%s\n", r[1], p[1]
+    }' "$ini")"
+  [ -n "$out" ] || return 1
+  IFS=$'\t' read -r isrel path <<< "$out"
+  [ -n "$path" ] || return 1
+  if [ "$isrel" = 1 ] && [ "${path#/}" = "$path" ]; then path="$root/$path"; fi
+  [ -d "$path" ] || return 1
+  printf '%s' "$path"
+}
+firefox_profile_dir() {   # the profile this extra works on: the one saved by --profile, else the default one from profiles.ini
+  local p root; p="$(theme_get firefox_profile "")"
+  if [ -n "$p" ]; then [ -d "$p" ] && { printf '%s' "$p"; return 0; }; return 1; fi
+  while IFS= read -r root; do
+    p="$(firefox_ini_default "$root")" && { printf '%s' "$p"; return 0; }
+  done < <(firefox_roots)
+  return 1
+}
+firefox_profiles_seen() {   # what to show when the right profile cannot be told
+  local root; while IFS= read -r root; do
+    [ -f "$root/profiles.ini" ] || continue
+    echo "  $root/profiles.ini:"; grep -E '^(Name|Path|Default)=' "$root/profiles.ini" | sed 's/^/    /'
+  done < <(firefox_roots)
+}
+firefox_start_dir() { printf '%s' "${XDG_DATA_HOME:-$HOME/.local/share}/kurenai/firefox"; }
+firefox_userjs_write() {   # the one managed block in user.js (the stylesheet switch, plus the home page when `home on`)
+  local p="$1" c d; c="$(mktemp "$STATE/next/blk.XXXXXX")"; d="$(firefox_start_dir)"
+  {
+    echo 'user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);'
+    [ "$(theme_get firefox_home 0)" = 1 ] && printf 'user_pref("browser.startup.homepage", "file://%s/start.html");\n' "${d// /%20}"
+  } > "$c"
+  ex_block_put "$p/user.js" js "$c"; rm -f "$c"
+}
+firefox_loader_ok() { [ -f "$1/chrome/utils/boot.sys.mjs" ]; }
+firefox_program_ok() { [ -f /usr/lib/firefox/config.js ] || [ -f /usr/lib64/firefox/config.js ]; }
+firefox_script_remove() { rm -f "$1/chrome/JS/kurenai.uc.js"; }
+
+extra_setup_firefox() {
+  have firefox || die "firefox is not installed (sudo pacman -S firefox). Nothing was changed."
+  local prof="" p c
+  while [ $# -gt 0 ]; do
+    case "$1" in --profile) prof="${2:-}"; [ $# -ge 2 ] && shift ;; *) die "unknown option '$1' (only: --profile DIR)" ;; esac
+    shift
+  done
+  if [ -n "$prof" ]; then
+    prof="${prof/#\~/$HOME}"; [ -d "$prof" ] || die "no such folder: $prof. Nothing was changed."
+    theme_set firefox_profile "$prof"
+  fi
+  if ! p="$(firefox_profile_dir)"; then
+    echo "kurenai-ctl: could not tell which Firefox profile to use. Nothing was changed." >&2
+    firefox_profiles_seen >&2
+    die "pick one and run:  kurenai-ctl theme extra firefox on --profile /full/path/to/the/profile   (about:profiles in Firefox shows it)"
+  fi
+  [ -f "$p/prefs.js" ] || echo "  note: $p has no prefs.js yet; is it a profile Firefox has started with? (about:profiles)"
+  c="$(mktemp "$STATE/next/blk.XXXXXX")"
+  printf '@import url("kurenai/kurenai.css");\n' > "$c";         ex_block_put_top "$p/chrome/userChrome.css" css "$c"
+  printf '@import url("kurenai/kurenai-content.css");\n' > "$c"; ex_block_put_top "$p/chrome/userContent.css" css "$c"
+  rm -f "$c"; firefox_userjs_write "$p"
+  echo "  profile: $p"
+  echo "  chrome/userChrome.css and userContent.css: one managed @import line added at the very TOP; your own rules below it are untouched."
+  echo "  user.js: one managed block (turns on userChrome.css loading). Firefox copies it into prefs.js; \`off\` removes the block, and that pref then stays true until you reset it in about:config."
+  echo "  Firefox reads all of this at start-up: close every Firefox window and open it again. Websites are not recoloured."
+  echo "  Tabs: turn on Firefox's vertical tabs from its own menu if you want the rail (right-click the tab strip); the stylesheet styles both layouts."
+  echo "  Start page (optional):  kurenai-ctl theme extra firefox home on      Hide/show button and keys (optional):  kurenai-ctl theme extra firefox script on"
+}
+extra_teardown_firefox() {
+  local p d; p="$(firefox_profile_dir 2>/dev/null)" || p=""
+  if [ -n "$p" ]; then
+    ex_block_remove "$p/chrome/userChrome.css" css
+    ex_block_remove "$p/chrome/userContent.css" css
+    ex_block_remove "$p/user.js" js
+    rm -f "$p/chrome/kurenai/kurenai-colors.css" "$p/chrome/kurenai/kurenai.css" "$p/chrome/kurenai/kurenai-content.css"
+    rmdir "$p/chrome/kurenai" 2>/dev/null
+    firefox_script_remove "$p"
+  else
+    echo "  (could not find the Firefox profile any more: remove the KURENAI block at the top of chrome/userChrome.css and userContent.css by hand)"
+  fi
+  d="$(firefox_start_dir)"
+  rm -f "$d/start-colors.css" "$d/start.css" "$d/start.html"
+  # start-links.js holds your own links: removed only while it is still exactly what we wrote
+  if [ -f "$d/start-links.js" ] && cmp -s "$d/start-links.js" "$EXTRAS_DIR/firefox/start-links.js"; then rm -f "$d/start-links.js"; fi
+  rmdir "$d" 2>/dev/null
+  theme_set firefox_home 0; theme_set firefox_profile ""
+  echo "  Restart Firefox. If you used 'home on': Firefox has copied that home page into its own prefs.js, so it stays until you reset it (Settings > Home > Restore Defaults)."
+  echo "  The preference toolkit.legacyUserProfileCustomizations.stylesheets stays true in prefs.js (harmless); reset it in about:config if you like."
+  return 0
+}
+cmd_theme_firefox() {   # cmd_theme_firefox status|script|home|profile [args]
+  local act="${1:-status}" p d; [ $# -gt 0 ] && shift
+  case "$act" in
+    profile)
+      if [ -n "${1:-}" ]; then
+        extra_attached firefox && die "firefox is attached: run 'theme extra firefox off' first, then 'on --profile DIR'"
+        [ -d "$1" ] || die "no such folder: $1"; theme_set firefox_profile "$1"; echo "firefox profile: $1"
+      else
+        p="$(firefox_profile_dir)" && echo "$p" || { echo "no profile found"; firefox_profiles_seen; return 1; }
+      fi ;;
+    status)
+      echo "firefox ($(timeout 5 firefox --version 2>/dev/null || echo 'not found'))   extra: $(extra_attached firefox && echo ATTACHED || echo off)"
+      p="$(firefox_profile_dir 2>/dev/null)" || p=""
+      if [ -z "$p" ]; then echo "  profile: not found (use: theme extra firefox on --profile DIR)"; firefox_profiles_seen; return 0; fi
+      echo "  profile: $p"
+      printf '  userChrome.css block: %s   userContent.css block: %s   user.js block: %s\n' \
+        "$(ex_has_block "$p/chrome/userChrome.css" css && echo yes || echo no)" "$(ex_has_block "$p/chrome/userContent.css" css && echo yes || echo no)" "$(ex_has_block "$p/user.js" js && echo yes || echo no)"
+      printf '  generated files: %s/3 in chrome/kurenai/   start page: %s   home page set: %s\n' \
+        "$(ls "$p/chrome/kurenai/kurenai-colors.css" "$p/chrome/kurenai/kurenai.css" "$p/chrome/kurenai/kurenai-content.css" 2>/dev/null | wc -l)" \
+        "$([ -f "$(firefox_start_dir)/start.html" ] && echo present || echo absent)" "$([ "$(theme_get firefox_home 0)" = 1 ] && echo yes || echo no)"
+      printf '  script layer: fx-autoconfig in the profile: %s   in the Firefox folder (config.js): %s   kurenai.uc.js: %s\n' \
+        "$(firefox_loader_ok "$p" && echo yes || echo no)" "$(firefox_program_ok && echo yes || echo 'not found')" "$([ -f "$p/chrome/JS/kurenai.uc.js" ] && echo installed || echo no)"
+      pgrep -x firefox >/dev/null 2>&1 && echo "  Firefox is running now: restart it to load changes." ;;
+    home)
+      case "${1:-}" in on|off) ;; *) die "usage: kurenai-ctl theme extra firefox home on|off" ;; esac
+      extra_attached firefox || die "attach first: kurenai-ctl theme extra firefox on"
+      p="$(firefox_profile_dir)" || die "Firefox profile not found"
+      theme_set firefox_home "$([ "$1" = on ] && echo 1 || echo 0)"; firefox_userjs_write "$p"
+      if [ "$1" = on ]; then
+        echo "home page: set to the KURENAI start page ($(firefox_start_dir)/start.html) from the next start. Firefox re-applies it on every start (user.js), so a home page you pick in Settings is overridden until 'home off'."
+        echo "your links and search address: $(firefox_start_dir)/start-links.js (edit it; it is never overwritten)."
+        echo "New TABS still show Firefox's own page. To use this page for new tabs too, add-on 'New Tab Override' can point them at the file address above."
+      else echo "home page: KURENAI no longer sets it. Firefox keeps the last value in prefs.js: choose your page in Settings > Home (or Restore Defaults)."; fi ;;
+    script)
+      extra_attached firefox || die "attach first: kurenai-ctl theme extra firefox on"
+      p="$(firefox_profile_dir)" || die "Firefox profile not found"
+      case "${1:-status}" in
+        on)
+          if ! firefox_loader_ok "$p"; then
+            echo "The script layer needs fx-autoconfig (https://github.com/MrOtherGuy/fx-autoconfig, MPL-2.0), which is not installed in this profile. Nothing was changed."
+            echo "Its README says to:"
+            echo "  1. copy the repository's program/ contents (config.js and defaults/) into Firefox's folder, usually /usr/lib/firefox  <- a system folder: needs root, you run it"
+            echo "  2. copy the repository's profile/ contents (the chrome/ folder) into: $p"
+            echo "  3. start Firefox once; if scripts do not load, clear the startup cache (about:support > Clear startup cache)"
+            echo "Read that repository's files before you copy anything: its config.js runs with full browser rights. Then run this command again."
+            return 1
+          fi
+          mkdir -p "$p/chrome/JS"; cp "$EXTRAS_DIR/firefox/kurenai.uc.js" "$p/chrome/JS/kurenai.uc.js"
+          firefox_program_ok || echo "  note: config.js was not found in /usr/lib/firefox or /usr/lib64/firefox; the script only runs when fx-autoconfig's program files are installed there."
+          echo "script layer: installed (chrome/JS/kurenai.uc.js). Restart Firefox. Keys: Ctrl+Alt+H cycles hide states, Ctrl+Alt+V vertical tabs, Ctrl+L again closes the address card. A toolbar button 'Show and hide' is added to the toolbar." ;;
+        off) firefox_script_remove "$p"; echo "script layer: removed. Restart Firefox. (The hide state attribute is simply ignored without it.)" ;;
+        status) [ -f "$p/chrome/JS/kurenai.uc.js" ] && echo "script layer: installed" || echo "script layer: not installed"
+                echo "  fx-autoconfig in the profile: $(firefox_loader_ok "$p" && echo yes || echo no);  program files in the Firefox folder: $(firefox_program_ok && echo yes || echo 'not found')" ;;
+        *) die "usage: kurenai-ctl theme extra firefox script on|off|status" ;;
+      esac ;;
+    *) die "usage: kurenai-ctl theme extra firefox on [--profile DIR] | off | status | script on|off|status | home on|off | profile [DIR]" ;;
+  esac
+}
+
+# ---- commands -------------------------------------------------------------------------------------------------------------
+extra_dests() { local mf="$EXTRAS_DIR/$1/MANIFEST" kind tpl dest style; [ -f "$mf" ] || return 0; while IFS='|' read -r kind tpl dest style; do case "$kind" in ''|\#*) continue;; esac; ex_path "$dest"; echo; done < "$mf"; }
+cmd_theme_extras() {
+  local act="${1:-status}"; [ $# -gt 0 ] && shift
+  case "$act" in
+    status)
+      echo "app colours (kitty gtk qt btop yazi zathura nvim spicetify firefox)   follow wallpaper changes: $([ "$(theme_get extras_follow 1)" = 1 ] && echo yes || echo no)"
+      echo "  colours now: $(theme_enabled && grep -q '"enabled": true' "$THEME_PAL" 2>/dev/null && echo 'from the wallpaper' || echo 'built-in KURENAI colours')"
+      local x app state files d n
+      for x in $EXTRAS_ALL; do
+        case "$x" in gtk) app="gsettings" ;; qt) app="qt6ct" ;; *) app="$x" ;; esac
+        state="off"; extra_attached "$x" && state="ATTACHED"
+        n=0; files=0; for d in $(extra_dests "$x"); do n=$((n+1)); [ -e "$d" ] && files=$((files+1)); done
+        printf '  %-10s %-9s app: %-9s files: %s/%s\n' "$x" "$state" "$(have "$app" && echo found || echo missing)" "$files" "$n"
+      done
+      [ -f "$EXTRAS_DIR/tokens.awk" ] || echo "  (templates missing in $EXTRAS_DIR: re-run install.sh)"
+      ;;
+    apply)  theme_extras_apply ;;
+    follow) case "${1:-}" in on) theme_set extras_follow 1 ;; off) theme_set extras_follow 0 ;; *) die "usage: kurenai-ctl theme extras follow on|off" ;; esac; echo "app colours follow wallpaper changes: $1" ;;
+    reset)  local x; for x in $(extras_list | tr ',' ' '); do cmd_theme_extra "$x" off; done ;;
+    *) die "usage: kurenai-ctl theme extras [status|apply|follow on|off|reset]" ;;
+  esac
+}
+cmd_theme_extra() {
+  local name="${1:-}" act="${2:-}"
+  extra_known "$name" || die "unknown extra '$name'. Available: $EXTRAS_ALL"
+  mkdir -p "$STATE/next"
+  if [ "$name" = firefox ]; then
+    case "$act" in status|script|home|profile) shift 2; cmd_theme_firefox "$act" "$@"; return ;; esac
+  fi
+  case "$act" in
+    on)
+      [ -f "$EXTRAS_DIR/tokens.awk" ] && [ -f "$EXTRAS_DIR/$name/MANIFEST" ] || die "templates missing in $EXTRAS_DIR (re-run install.sh)"
+      shift 2
+      "extra_setup_$name" "$@" || return 1
+      extra_attach "$name"
+      local tok="$STATE/next/tokens.eff" err
+      if ! err="$(extras_make_tokens "$tok" 2>&1)"; then die "colours are not readable enough to apply: $(printf '%s' "$err" | head -n 2 | tr '\n' ';')"; fi
+      EX_CHANGED=0; extra_render "$name" "$tok" || return 1
+      extra_reload "$name"
+      echo "$name: ON ($(theme_enabled && echo 'wallpaper colours' || echo 'built-in KURENAI colours'; ))"
+      ;;
+    off)
+      "extra_teardown_$name"; extra_detach "$name"
+      echo "$name: off (your own settings restored, generated files removed)"
+      ;;
+    *) die "usage: kurenai-ctl theme extra <name> on|off     names: $EXTRAS_ALL   (firefox also: on --profile DIR | status | script on|off|status | home on|off | profile [DIR])" ;;
+  esac
 }
 
 # ------------------------------------------------------------------ keybind conflicts

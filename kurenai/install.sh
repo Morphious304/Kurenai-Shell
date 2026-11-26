@@ -99,7 +99,14 @@ cp -r "$SRC/matugen" "$STATE/matugen"
 cp "$SRC/rofi/kurenai.rasi" "$STATE/matugen/kurenai.default.rasi"
 [ -f "$STATE/palette.json" ] || printf '{\n  "enabled": false\n}\n' > "$STATE/palette.json"
 [ -f "$CFG/hypr/kurenai-colors.lua" ] || cp "$SRC/hypr/kurenai-colors.lua" "$CFG/hypr/kurenai-colors.lua"
+# app colours (kitty, gtk, qt, btop, yazi, zathura, nvim, spicetify, firefox): our templates; your attach state and saved settings stay
+mkdir -p "$STATE/extras"
+for d in "$SRC"/extras/*/; do n="$(basename "$d")"; rm -rf "$STATE/extras/$n"; cp -r "$d" "$STATE/extras/$n"; done
+cp "$SRC"/extras/*.awk "$STATE/extras/"
 THEME_ON=0; grep -qx 'enabled=1' "$STATE/theme.conf" 2>/dev/null && THEME_ON=1
+if [ "$THEME_ON" = 0 ] && grep -q '^extras=.' "$STATE/theme.conf" 2>/dev/null; then
+  "$BIN/kurenai-ctl" theme extras apply 2>/dev/null || true
+fi
 if [ "$THEME_ON" = 1 ]; then
   # the files above were just reset to the defaults; recolour from the current wallpaper again
   # (if this fails the built-in colours stay, nothing breaks)
@@ -131,6 +138,11 @@ echo
 echo "  WALLPAPER COLOURS (new, needs matugen: sudo pacman -S matugen): off until you turn it on."
 echo "    Quick Settings > Wallpaper colours, or:  $BIN/kurenai-ctl theme on     (then every wallpaper you set recolours the shell)"
 echo "    Back to the original colours:  $BIN/kurenai-ctl theme off     Overview: $BIN/kurenai-ctl theme status"
+echo
+echo "  APP COLOURS (new): kitty, GTK, Qt, btop, yazi, zathura, Neovim, Spicetify can follow the same colours. Nothing is attached yet."
+echo "    $BIN/kurenai-ctl theme extras             see what is available;   $BIN/kurenai-ctl theme extra kitty on   attach one"
+echo "    Each 'on' prints exactly what it changes in that app's config (after a backup); 'off' undoes it. docs/THEME.md"
+echo "  FIREFOX (new, opt-in): $BIN/kurenai-ctl theme extra firefox on     (restart Firefox afterwards; not yet run in Firefox 160, see docs/FIREFOX.md)"
 echo
 echo "  SHORTCUTS PAGE: works right away from a terminal:  qs -c kurenai ipc call shortcuts toggle"
 if ! grep -q 'shortcuts toggle' "$CFG/hypr/kurenai-binds.lua" 2>/dev/null; then

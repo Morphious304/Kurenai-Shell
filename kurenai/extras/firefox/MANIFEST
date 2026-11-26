@@ -1,0 +1,7 @@
+file|kurenai-colors.css.tpl|@FFPROFILE@/chrome/kurenai/kurenai-colors.css
+file|kurenai.css|@FFPROFILE@/chrome/kurenai/kurenai.css
+file|kurenai-content.css|@FFPROFILE@/chrome/kurenai/kurenai-content.css
+file|kurenai-colors.css.tpl|@DATA@/kurenai/firefox/start-colors.css
+file|start.css|@DATA@/kurenai/firefox/start.css
+file|start.html|@DATA@/kurenai/firefox/start.html
+once|start-links.js|@DATA@/kurenai/firefox/start-links.js

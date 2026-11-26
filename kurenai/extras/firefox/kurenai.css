@@ -1,0 +1,180 @@
+/* KURENAI for Firefox: browser chrome (loaded from userChrome.css by one managed @import line).
+ *
+ * Written from Firefox's own source (mozilla-central: navigator-toolbox.inc.xhtml, browser-box.inc.xhtml,
+ * tabbrowser/tabs.css, urlbar-searchbar.css, UrlbarView.sys.mjs). Nothing here has been run in Firefox 160 yet.
+ * Rules that must beat Firefox's own styles carry !important (the usual rule for userChrome.css).
+ * Firefox does not support custom CSS and an update can move things: if the browser looks broken, run
+ *   kurenai-ctl theme extra firefox off      (or delete the one @import block at the top of chrome/userChrome.css)
+ *
+ * Layout idea: tabs on a rail (Firefox's vertical tabs) or on a bar (horizontal), a slim address pill, and the
+ * address dropdown restyled as a launcher-like card. The hide states at the end are driven by the optional script
+ * (chrome/JS/kurenai.uc.js, needs fx-autoconfig). Without the script nothing below the marker "HIDE STATES" matches.
+ */
+@import url("kurenai-colors.css");
+
+/* ---- 1. derived colours ------------------------------------------------------------------------------------------- */
+:root {
+  --kn-line: color-mix(in srgb, var(--kn-text) 12%, transparent);
+  --kn-line-strong: color-mix(in srgb, var(--kn-text) 28%, transparent);
+  --kn-panel: color-mix(in srgb, var(--kn-bg) 96%, transparent);
+  --kn-panel-line: color-mix(in srgb, var(--kn-text) 24%, transparent);
+  --kn-hover: color-mix(in srgb, var(--kn-surface) 60%, transparent);
+  --kn-glow: color-mix(in srgb, var(--kn-accent) 26%, transparent);
+}
+
+/* Firefox's own theme variables, best effort: a name that does not exist in your version is simply ignored. */
+:root {
+  --toolbar-bgcolor: var(--kn-bg) !important;
+  --toolbar-color: var(--kn-text) !important;
+  --toolbar-field-background-color: var(--kn-surface) !important;
+  --toolbar-field-color: var(--kn-text) !important;
+  --toolbar-field-border-color: var(--kn-line) !important;
+  --toolbar-field-focus-background-color: var(--kn-surface) !important;
+  --toolbar-field-focus-color: var(--kn-text) !important;
+  --toolbar-field-focus-border-color: var(--kn-accent) !important;
+  --toolbarbutton-icon-fill: var(--kn-text2) !important;
+  --toolbarbutton-hover-background: var(--kn-raised) !important;
+  --toolbarbutton-active-background: var(--kn-raised) !important;
+  --tab-selected-bgcolor: var(--kn-surface) !important;
+  --tab-selected-textcolor: var(--kn-text) !important;
+  --lwt-accent-color: var(--kn-bg) !important;
+  --lwt-text-color: var(--kn-text) !important;
+  --arrowpanel-background: var(--kn-panel) !important;
+  --arrowpanel-color: var(--kn-text) !important;
+  --arrowpanel-border-color: var(--kn-panel-line) !important;
+  --panel-background: var(--kn-panel) !important;
+  --panel-color: var(--kn-text) !important;
+  --panel-border-color: var(--kn-panel-line) !important;
+  --panel-separator-color: var(--kn-line) !important;
+  --urlbarView-highlight-background: var(--kn-raised) !important;
+  --urlbarView-highlight-color: var(--kn-text) !important;
+  --urlbarView-hover-background: var(--kn-hover) !important;
+  --sidebar-background-color: var(--kn-bg) !important;
+  --sidebar-text-color: var(--kn-text) !important;
+}
+
+/* ---- 2. one docked panel ----------------------------------------------------------------------------------------- */
+#navigator-toolbox {
+  background-color: var(--kn-bg) !important;
+  border-bottom: none !important;
+}
+#TabsToolbar,
+#nav-bar,
+#PersonalToolbar {
+  background-color: transparent !important;
+  background-image: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--kn-text) !important;
+}
+#nav-bar { padding-block: 4px !important; }
+
+/* the page is set into the frame (cosmetic: if the corners stay square in your version, nothing else breaks) */
+#browser { background-color: var(--kn-bg) !important; }
+#tabbrowser-tabbox { padding: 0 8px 8px !important; }
+:root:has(#tabbrowser-tabs[orient="vertical"]) #tabbrowser-tabbox { padding-left: 0 !important; }
+#tabbrowser-tabpanels {
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  border: 1px solid var(--kn-line) !important;
+}
+
+/* ---- 3. tabs ----------------------------------------------------------------------------------------------------- */
+.tabbrowser-tab .tab-background {
+  border-radius: 8px !important;
+  background-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+.tabbrowser-tab:hover .tab-background:not([selected], [multiselected]) {
+  background-color: var(--kn-hover) !important;
+}
+.tabbrowser-tab .tab-label { color: var(--kn-muted) !important; font-size: 12.5px !important; }
+.tabbrowser-tab:hover .tab-label { color: var(--kn-text2) !important; }
+.tabbrowser-tab .tab-content[selected] .tab-label { color: var(--kn-text) !important; }
+.tabbrowser-tab .tab-close-button { color: var(--kn-text2) !important; }
+
+/* horizontal bar: the active tab sits on the surface colour with a short accent rule under it */
+#tabbrowser-tabs[orient="horizontal"] .tab-background[selected] {
+  background-color: var(--kn-surface) !important;
+  background-image: linear-gradient(var(--kn-accent), var(--kn-accent)) !important;
+  background-size: calc(100% - 20px) 2px !important;
+  background-position: center bottom !important;
+  background-repeat: no-repeat !important;
+}
+/* vertical rail: the active tab is a raised row with a 3px accent bar on its left edge */
+#tabbrowser-tabs[orient="vertical"] .tab-background[selected] {
+  background-color: var(--kn-raised) !important;
+  background-image: linear-gradient(var(--kn-accent), var(--kn-accent)) !important;
+  background-size: 3px calc(100% - 16px) !important;
+  background-position: left center !important;
+  background-repeat: no-repeat !important;
+}
+#sidebar-container,
+#vertical-tabs { background-color: var(--kn-bg) !important; }
+
+/* ---- 4. the address pill ---------------------------------------------------------------------------------------- */
+#urlbar-container {
+  flex: 0 1 420px !important;
+  min-width: 200px !important;
+  margin-inline: auto !important;
+}
+#urlbar-background {
+  border-radius: 14px !important;
+  background-color: var(--kn-surface) !important;
+  border: 1px solid var(--kn-line) !important;
+  box-shadow: none !important;
+}
+#urlbar:hover > #urlbar-background { border-color: var(--kn-line-strong) !important; }
+#urlbar[focused="true"] > #urlbar-background {
+  border-color: var(--kn-accent) !important;
+  box-shadow: 0 0 0 3px var(--kn-glow) !important;
+}
+#urlbar-input { color: var(--kn-text) !important; }
+
+/* ---- 5. the dropdown as a card ---------------------------------------------------------------------------------- */
+#urlbar[breakout][breakout-extend] > #urlbar-background {
+  border-radius: 14px !important;
+  background-color: var(--kn-panel) !important;
+  border: 1px solid var(--kn-panel-line) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45) !important;
+}
+.urlbarView-row { border-radius: 10px !important; }
+.urlbarView-row[selected],
+.urlbarView-row-inner[selected] {
+  background-color: var(--kn-raised) !important;
+  background-image: linear-gradient(var(--kn-accent), var(--kn-accent)) !important;
+  background-size: 3px calc(100% - 20px) !important;
+  background-position: 5px center !important;
+  background-repeat: no-repeat !important;
+}
+.urlbarView-title { color: var(--kn-text) !important; }
+.urlbarView-url { color: var(--kn-accent-text) !important; }
+.urlbarView-action { color: var(--kn-muted) !important; }
+
+/* ---- HIDE STATES (set by the optional script as the attribute kurenai-hide on the window: none | addr | tabs | both) --
+ * addr / both : the address strip shrinks to a 6px hot edge; it comes back when the pointer touches the top edge or
+ *               when the address bar has focus (Ctrl+L). Hidden means out of the way, not unreachable.
+ * tabs / both : the tab strip is collapsed (the sidebar's launcher buttons, if you use them, stay).
+ */
+:root[kurenai-hide="addr"] #nav-bar,
+:root[kurenai-hide="both"] #nav-bar {
+  max-height: 6px !important;
+  min-height: 0 !important;
+  padding-block: 0 !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+}
+:root[kurenai-hide="addr"] #nav-bar:hover,
+:root[kurenai-hide="addr"] #nav-bar:focus-within,
+:root[kurenai-hide="both"] #nav-bar:hover,
+:root[kurenai-hide="both"] #nav-bar:focus-within {
+  max-height: 60px !important;
+  padding-block: 4px !important;
+  overflow: visible !important;
+  opacity: 1 !important;
+}
+:root[kurenai-hide="tabs"] #TabsToolbar,
+:root[kurenai-hide="both"] #TabsToolbar { visibility: collapse !important; }
+:root[kurenai-hide="tabs"] #vertical-tabs,
+:root[kurenai-hide="both"] #vertical-tabs { display: none !important; }

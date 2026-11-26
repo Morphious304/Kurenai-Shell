@@ -1,0 +1,2 @@
+file|kurenai.lua.tpl|@CFG@/nvim/colors/kurenai.lua
+file|kurenai-watch.lua.tpl|@CFG@/nvim/plugin/kurenai-watch.lua

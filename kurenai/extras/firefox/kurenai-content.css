@@ -1,0 +1,14 @@
+/* KURENAI for Firefox: Firefox's own pages (loaded from userContent.css by one managed @import line).
+ * Websites are never touched. Only the pages listed in the @-moz-document rule below. */
+@import url("kurenai-colors.css");
+
+@-moz-document url("about:newtab"), url("about:home"), url("about:blank"), url("about:privatebrowsing") {
+  :root {
+    --newtab-background-color: var(--kn-bg) !important;
+    --newtab-background-color-secondary: var(--kn-surface) !important;
+    --newtab-text-primary-color: var(--kn-text) !important;
+    --newtab-text-secondary-color: var(--kn-text2) !important;
+    --newtab-primary-action-background: var(--kn-accent) !important;
+  }
+  html, body { background-color: var(--kn-bg) !important; color: var(--kn-text) !important; }
+}

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KURENAI</title>
+<link rel="stylesheet" href="start-colors.css">
+<link rel="stylesheet" href="start.css">
+</head>
+<body>
+<div id="petals" aria-hidden="true"></div>
+<div class="vk" id="vk" aria-hidden="true"></div>
+<div class="clock" id="clock"></div>
+<div class="date" id="date"></div>
+<form id="form" autocomplete="off">
+  <label class="sc">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.7-4.7"></path></svg>
+    <input id="q" type="text" autofocus spellcheck="false">
+  </label>
+</form>
+<nav class="links" id="links"></nav>
+<script src="start-links.js"></script>
+<script>
+(function () {
+  var S = window.KURENAI_START || {};
+  var q = document.getElementById("q");
+  q.placeholder = S.searchLabel || "Search the web or enter an address";
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function tick() {
+    var d = new Date();
+    var days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    var months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    document.getElementById("clock").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes());
+    document.getElementById("date").textContent = days[d.getDay()] + " · " + d.getDate() + " " + months[d.getMonth()];
+    document.getElementById("vk").textContent = "日月火水木金土".charAt(d.getDay()) + "曜日";
+  }
+  tick(); setInterval(tick, 20000);
+  document.getElementById("form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var v = q.value.trim();
+    if (!v) return;
+    var looksLikeAddress = /^[a-z][a-z0-9+.-]*:\/\//i.test(v) || (/^[^\s\/]+\.[a-z]{2,}(\/\S*)?$/i.test(v));
+    if (looksLikeAddress) location.href = /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : "https://" + v;
+    else location.href = (S.search || "https://duckduckgo.com/?q=") + encodeURIComponent(v);
+  });
+  var box = document.getElementById("links");
+  (S.links || []).slice(0, 6).forEach(function (l) {
+    var a = document.createElement("a");
+    a.className = "lk"; a.href = l.url;
+    var i = document.createElement("i"); i.textContent = l.glyph || "紅";
+    var s = document.createElement("span"); s.textContent = l.label || l.url;
+    a.appendChild(i); a.appendChild(s); box.appendChild(a);
+  });
+  var p = document.getElementById("petals"), html = "";
+  for (var n = 0; n < 14; n++) {
+    var d = 15 + (n * 7) % 11;
+    html += '<span class="petal" style="--x:' + ((n * 37 + 11) % 96) + '%;--d:' + d + 's;--w:-' + ((n * 5) % d) + 's;--r:' + ((n * 53) % 360) + 'deg;--y:' + ((n * 29) % 70 + 5) + '"></span>';
+  }
+  p.innerHTML = html;
+})();
+</script>
+</body>
+</html>

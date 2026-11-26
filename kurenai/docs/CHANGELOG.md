@@ -4,7 +4,22 @@
 
 Newest first. Only user-visible changes and fixes.
 
-## Wallpaper colours (this package)
+## Firefox theme (this package)
+- New, opt-in: `kurenai-ctl theme extra firefox on|off`. Stylesheet layer (tab rail or horizontal tabs, address pill and floating card, Firefox's own pages), optional local start page (`home on|off`), optional script layer (`script on|off`, needs the fx-autoconfig loader, which kurenai-ctl never installs). Profile found from `profiles.ini` or `--profile DIR`. See [FIREFOX.md](FIREFOX.md).
+- **Not run in Firefox 160** (no Firefox in the sandbox): see the unverified list in FIREFOX.md. Install/undo/colours were run in a fake home.
+- Changes to your files: one marked block at the top of `userChrome.css`/`userContent.css` and one in `user.js`, after a backup; `off` restores them byte for byte. Firefox keeps `toolkit.legacyUserProfileCustomizations.stylesheets` (and a home page set by `home on`) in `prefs.js` after `off`; FIREFOX.md says how to reset them.
+- New: `extras/firefox/`, `docs/FIREFOX.md`. Changed: `kurenai-ctl` (`js` marker style, block-at-top helper, profile detection), `install.sh`, docs.
+
+## App colours (previous package)
+- New, opt-in per app: kitty, GTK 3/4, qt5ct/qt6ct, btop, yazi, zathura, Neovim and Spicetify follow the shell's colours. `kurenai-ctl theme extras` / `theme extra NAME on|off`, Quick Settings "App colours" tile (appears once an app is attached), `theme extras follow on|off`. See [THEME.md](THEME.md).
+- The apps are filled from the same colours as the shell with a small built-in renderer (`extras/render.awk`), including a readability check, so they match exactly and also work while wallpaper colours are off (built-in KURENAI colours).
+- Every change to a config of yours is one marked block or one setting, after a backup in `~/.local/share/kurenai/extras/backup/`; `off` removes exactly that.
+- `kurenai.lua` sets `QT_QPA_PLATFORMTHEME=qt6ct` when the Qt extra is on and you have not set it yourself.
+- Fixed: Quick Settings parsed config keys with an underscore wrongly (the new `extras_follow`).
+- Fixed in the previous package: `shell.qml` lacked `import QtQuick` ("Non-existent attached object").
+- New: `extras/`, `ThemeCtl.qml` fields, `QuickSettings.qml` tile. Changed: `kurenai-ctl`, `install.sh`, `kurenai.lua`.
+
+## Wallpaper colours (previous package)
 - New, off by default: the shell, launcher, Quick Settings, lock screen (glow, password pill, petals), Rofi theme and Hyprland borders follow the wallpaper, using **matugen**. `kurenai-ctl theme on|off|status|type|contrast|accent|reset`, Quick Settings tiles, `qs -c kurenai ipc call theme ...`. See [THEME.md](THEME.md).
 - `Theme.qml` colours now come from `~/.local/share/kurenai/palette.json` when present, are checked for readability first, and fade between changes. Without the file nothing changes.
 - The lock screen's remaining fixed vermilion/charcoal values now use the theme.

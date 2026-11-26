@@ -1,7 +1,7 @@
 -- ~/.config/hypr/kurenai.lua
 -- KURENAI: Hyprland appearance module (Hyprland >= 0.55, Lua config).
 --
--- Appearance only. No binds, monitors, input, env or autostart live here.
+-- Appearance only. No binds, monitors, input or autostart live here (the one environment variable is the optional Qt one below).
 -- Loaded as the LAST thing in hyprland.lua so these values win over earlier ones.
 -- Each section is wrapped so one bad key cannot stop the rest of your config.
 
@@ -37,6 +37,21 @@ try("wallpaper colours", function()
   end
   if ok(dyn.raised) then c.raised = dyn.raised end
   if type(dyn.background) == "number" then c.background = dyn.background end
+end)
+
+-- Qt app colours: `kurenai-ctl theme extra qt on` writes ~/.local/share/kurenai/qt-env ("qt6ct"). Qt reads its platform theme
+-- from QT_QPA_PLATFORMTHEME, so it is set here, for apps started after this config is loaded. This is the one environment
+-- variable this file sets; it is skipped if you already set the variable yourself, and absent without that file.
+try("qt platform theme", function()
+  if not hl.env then return end
+  if (os.getenv("QT_QPA_PLATFORMTHEME") or "") ~= "" then return end
+  local data = os.getenv("XDG_DATA_HOME")
+  if not data or data == "" then data = (os.getenv("HOME") or "") .. "/.local/share" end
+  local fh = io.open(data .. "/kurenai/qt-env", "r")
+  if not fh then return end
+  local v = (fh:read("*l") or ""):gsub("%s+", "")
+  fh:close()
+  if v == "qt6ct" or v == "qt5ct" then hl.env("QT_QPA_PLATFORMTHEME", v) end
 end)
 
 -- 1. Borders, gaps, rounding, shadow, opacity ---------------------------------

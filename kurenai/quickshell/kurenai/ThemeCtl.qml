@@ -17,6 +17,8 @@ Singleton {
     property bool enabled: false         // theme.conf: enabled=1
     property string type: "tonal-spot"   // matugen scheme type
     property string accent: "wallpaper"  // "wallpaper" | "vermilion"
+    property string extras: ""           // app colours attached with `kurenai-ctl theme extra NAME on` (comma list, may be empty)
+    property bool extrasFollow: true     // false = apps keep their last colours when the wallpaper changes
     property bool busy: false
     property string error: ""            // last failure, one line; cleared by the next job
 
@@ -27,7 +29,7 @@ Singleton {
         const o = {};
         const lines = String(text || "").split("\n");
         for (let i = 0; i < lines.length; i++) {
-            const m = /^([a-z]+)=(.*)$/.exec(lines[i]);
+            const m = /^([a-z_]+)=(.*)$/.exec(lines[i]);
             if (m) o[m[1]] = m[2].trim();
         }
         return o;
@@ -37,6 +39,8 @@ Singleton {
         enabled = o.enabled === "1";
         type = o.type || "tonal-spot";
         accent = o.accent === "vermilion" ? "vermilion" : "wallpaper";
+        extras = /^[a-z,]*$/.test(o.extras || "") ? (o.extras || "") : "";
+        extrasFollow = o.extras_follow !== "0";
     }
     function refresh() { conf.reload(); }
 
@@ -97,6 +101,7 @@ Singleton {
     function setEnabled(on) { if (available) enqueue("toggle", ["theme", on ? "on" : "off"]); }
     function toggle() { setEnabled(!enabled); }
     function nextType() { if (available) enqueue("type", ["theme", "type", "next"]); }
+    function toggleExtrasFollow() { if (available) enqueue("follow", ["theme", "extras", "follow", extrasFollow ? "off" : "on"]); }
     function setAccent(a) { if (available) enqueue("accent", ["theme", "accent", a === "vermilion" ? "vermilion" : "wallpaper"]); }
     function resync() { if (available && enabled) enqueue("sync", ["theme-sync", "--force", "--auto"]); }
 

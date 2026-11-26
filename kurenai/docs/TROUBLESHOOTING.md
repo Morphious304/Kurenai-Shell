@@ -92,3 +92,19 @@ and what you expected to happen. I can only reason from what you paste; I cannot
 | Shell ignores the palette | the readability check refused it; `kurenai-ctl logs` shows "fails the contrast check". Try another scheme: `theme type next` |
 | Borders did not change | `theme hypr` may be off; Hyprland may not have repainted: `hyprctl reload` |
 | Want the original look back | `kurenai-ctl theme off` (or `theme reset`) |
+
+## Firefox
+See the table at the end of [FIREFOX.md](FIREFOX.md) (restart Firefox fully first; recolours show only after a restart).
+
+## App colours
+
+| Symptom | Cause and fix |
+|---|---|
+| `theme extra X on` says the app is not installed | it only attaches apps it finds; install it, then run it again |
+| Nothing changed in kitty | `kurenai-ctl theme extras` shows if it is attached; try `kill -USR1 $(pgrep -x kitty)` or open a new window. Make sure no later line in `kitty.conf` after the KURENAI block sets colours |
+| GTK apps look unchanged | restart the app. Libadwaita apps use `gtk-4.0/gtk.css`; GTK3 apps need the `adw-gtk3-dark` theme (`gsettings get org.gnome.desktop.interface gtk-theme`). Flatpak apps need the override in docs/THEME.md |
+| Qt apps unchanged | `echo $QT_QPA_PLATFORMTHEME` inside a freshly started app's terminal must print `qt6ct` (log out and in once after attaching); the qt6ct style must not be Kvantum |
+| btop colours did not change | `color_theme = "kurenai"` must be in `~/.config/btop/btop.conf`; run `pkill -USR2 -x btop` |
+| yazi shows an error after attaching | run `kurenai-ctl theme extra yazi off` and send me the message |
+| "app colours not updated (the previous colours stay)" | the wallpaper's colours failed the terminal readability check; try `theme type vibrant` or `theme accent vermilion` |
+| Get back to my own look | `kurenai-ctl theme extra NAME off` (or `theme extras reset`); copies of your original files are in `~/.local/share/kurenai/extras/backup/` |

@@ -21,7 +21,7 @@ SDDM, PipeWire, NetworkManager, kitty. Other setups may work but were not tried.
 - [10. What is verified and what is not](#10-what-is-verified-and-what-is-not)
 
 Detail pages (in `docs/`): [LOCK-SCREEN](docs/LOCK-SCREEN.md), [CLIPBOARD-AND-SYSMON](docs/CLIPBOARD-AND-SYSMON.md),
-[LAUNCHER](docs/LAUNCHER.md), [THEME](docs/THEME.md) (wallpaper colours), [SHORTCUTS-PAGE](docs/SHORTCUTS-PAGE.md), [PANELS](docs/PANELS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md),
+[LAUNCHER](docs/LAUNCHER.md), [THEME](docs/THEME.md) (wallpaper colours), [FIREFOX](docs/FIREFOX.md), [SHORTCUTS-PAGE](docs/SHORTCUTS-PAGE.md), [PANELS](docs/PANELS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md),
 [CHANGELOG](docs/CHANGELOG.md).
 
 ---
@@ -61,6 +61,8 @@ for you. Commands marked **sudo** change your system; read them before running t
 |---|---|---|
 | `rofi` | fallback launcher (`SUPER + SHIFT + SPACE`, and the Quickshell launcher falls back to it); themed by `rofi/kurenai.rasi` | no fallback launcher: install it, it is your safety net |
 | `matugen` | **wallpaper colours**: shell, lock screen, Rofi and borders follow the wallpaper ([docs/THEME.md](docs/THEME.md)) | the Quick Settings tiles are hidden; built-in colours stay |
+| `adw-gtk-theme`, `qt6ct`/`qt5ct`, `kitty`, `btop`, `yazi`, `zathura`, `neovim`, `spicetify` | **app colours**: each one you attach follows the same colours (`kurenai-ctl theme extras`) | that app is simply not offered / unchanged |
+| `firefox` | **Firefox theme** (opt-in): docked tab rail / horizontal tabs, floating address card, start page; `kurenai-ctl theme extra firefox on` ([docs/FIREFOX.md](docs/FIREFOX.md)); hide button + keys need the optional fx-autoconfig loader | not touched; nothing is attached unless you ask |
 | `nvidia-prime` (provides `prime-run`) | launcher **Prime** tab | the tab says it is not installed |
 | `brightnessctl` | brightness slider | row shows an install hint |
 | `power-profiles-daemon` | Saver / Balanced / Performance | section hidden |
@@ -99,6 +101,7 @@ kurenai/
 │   └── kurenai-sysmon            read-only system snapshot for the monitor panel
 ├── rofi/kurenai.rasi             Rofi theme (installed to ~/.config/rofi/themes/)
 ├── matugen/                      templates for wallpaper colours (installed to ~/.local/share/kurenai/matugen/)
+├── extras/                       app colour templates + renderer (kitty gtk qt btop yazi zathura nvim spicetify firefox; to ~/.local/share/kurenai/extras/)
 ├── hypr/                         all opt-in; only kurenai.lua is KURENAI's own
 │   ├── kurenai.lua               appearance (borders, gaps, rounding, shadow, motion)
 │   ├── kurenai-binds.lua         15 keybinds (launcher + its Run/Prime/Walls tabs, panels, lock, clipboard, monitor, shortcuts)
@@ -142,6 +145,7 @@ Where things land after `install.sh`:
 | `hypr/*.lua`, `hypr/hypridle.kurenai.conf` | `~/.config/hypr/` |
 | `rofi/kurenai.rasi` | `~/.config/rofi/themes/` |
 | `matugen/` | `~/.local/share/kurenai/matugen/` |
+| `extras/` | `~/.local/share/kurenai/extras/` (nothing is attached until you run `kurenai-ctl theme extra NAME on`) |
 | `bin/*` | `~/.local/bin/` (put it on your `PATH`) |
 | backups, notes, favourites, Run history | `~/.local/share/kurenai/` |
 
@@ -299,6 +303,7 @@ Quickshell reloads QML when you save a file, so most changes appear immediately.
 | To change | Edit | Notes |
 |---|---|---|
 | Colours that follow the wallpaper | Quick Settings, or `kurenai-ctl theme ...` | [docs/THEME.md](docs/THEME.md) |
+| Firefox theme (opt-in) | `kurenai-ctl theme extra firefox on` | [docs/FIREFOX.md](docs/FIREFOX.md) |
 | Fixed (built-in) colours | `~/.config/quickshell/kurenai/Theme.qml` | the `defaults` table; with wallpaper colours on, these are only the fallback. Roles: `bg surface raised panelBg`, `text text2 muted`, `accent accentText accentDeep teal rose amber`. Keep small red text on `accentText`, not `accent` (contrast) |
 | Fonts | `Theme.qml`: `fontUi`, `fontMono`, `fontDisplay` | check what you have with `fc-list \| grep -i NAME` |
 | Sizes, spacing, radii | `Theme.qml`: `s1..s6` (4 px unit), `rSm/rMd/rLg`, `barHeight`, `*Width` | |
@@ -400,6 +405,8 @@ Against the original project's "definition of done":
 | Palette and consistency across bar and panels | one `Theme.qml`; artboard of every panel published |
 | Bar shows real information; workspaces reflect Hyprland and switch | implemented; confirm on your screen |
 | Launcher discovers installed apps; Rofi remains | implemented; Rofi untouched, plus an optional matching theme |
+| App colours (kitty, gtk, qt, btop, yazi, zathura, nvim, spicetify) | rendered and syntax-checked for all 720 generated palettes with contrast checks, attach/detach round trip verified in a fake home to restore your original files byte for byte (one exception: a file that had no final newline gets one); Neovim 0.9.5 loaded 80 generated colourschemes and picked up a live colour change; **none of the other apps was run here**, see [docs/THEME.md](docs/THEME.md) |
+| Firefox theme (CSS layer, start page, script layer) | install/undo/profile detection/colours run in a fake home with a fake `firefox`; CSS parsed with postcss; script logic run against a mock DOM; start page screenshotted in Chromium. **Nothing run in Firefox 160**: selectors come from Firefox's source and may differ, see [docs/FIREFOX.md](docs/FIREFOX.md) |
 | Wallpaper colours (matugen) | real matugen 4.2.0 run over 720 generated palettes (40 test images x 9 schemes x 2 accent modes) and checked by the same guard code as Theme.qml, the Hyprland loader and real Rofi; **QML behaviour and `hyprctl reload` not run on a real desktop by me**, see [docs/THEME.md](docs/THEME.md) |
 | Launcher tabs: Apps, Run, Prime, Walls | written and syntax/logic-checked in a sandbox; **not run on a real desktop by me**, see [docs/LAUNCHER.md](docs/LAUNCHER.md) |
 | Notifications, history, Do Not Disturb share one state | implemented (`NotificationStore.qml`) |
