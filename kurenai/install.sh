@@ -49,7 +49,7 @@ fi
 echo
 echo "Installed. Nothing has been activated or started."
 echo "  Health check:   $BIN/kurenai-ctl validate"
-echo "  Test the shell: qs -c kurenai        (in a terminal, so you can see errors; Ctrl+C stops it)"
+echo "  Test the shell: $BIN/kurenai-ctl debug   (foreground with live logs; stops any running shell first, Ctrl+C quits)"
 echo "  Enable theme:   $BIN/kurenai-ctl enable"
 case ":$PATH:" in *":$BIN:"*) ;; *) echo "  (note: $BIN is not on your PATH; use the full path above)";; esac
 [ -n "${REPLACED:-}" ] && [ -d "$REPLACED" ] && echo "  Replaced files were moved to: $REPLACED"
