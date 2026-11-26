@@ -65,7 +65,7 @@ PanelWindow {
         }
         Divider { visible: tray.visible }
 
-        Status {}
+        SysStatus {}
 
         Divider {}
 

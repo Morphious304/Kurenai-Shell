@@ -7,8 +7,8 @@ Item {
 
     property real maxWidth: 480
 
-    readonly property var focusedWindow: Hyprland.activeToplevel
-    readonly property string titleText: (focusedWindow && focusedWindow.title) ? focusedWindow.title : ""
+    readonly property var activeWin: Hyprland.activeToplevel
+    readonly property string shownTitle: (activeWin && activeWin.title) ? activeWin.title : ""
 
     implicitWidth: Math.min(Math.ceil(metrics.advanceWidth) + 2, maxWidth)
     implicitHeight: Theme.itemHeight
@@ -22,8 +22,8 @@ Item {
     Text {
         id: label
         anchors.fill: parent
-        text: root.titleText !== "" ? root.titleText : "Desktop"
-        color: root.titleText !== "" ? Theme.text : Theme.muted
+        text: root.shownTitle !== "" ? root.shownTitle : "Desktop"
+        color: root.shownTitle !== "" ? Theme.text : Theme.muted
         elide: Text.ElideRight
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter

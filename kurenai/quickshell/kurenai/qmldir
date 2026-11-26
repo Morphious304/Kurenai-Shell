@@ -8,5 +8,5 @@ Workspaces 1.0 Workspaces.qml
 WindowTitle 1.0 WindowTitle.qml
 Clock 1.0 Clock.qml
 Tray 1.0 Tray.qml
-Status 1.0 Status.qml
+SysStatus 1.0 SysStatus.qml
 Bar 1.0 Bar.qml
