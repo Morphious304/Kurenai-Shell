@@ -1,0 +1,22 @@
+singleton Theme 1.0 Theme.qml
+singleton Cli 1.0 Cli.qml
+singleton Store 1.0 Store.qml
+singleton App 1.0 App.qml
+Btn 1.0 Btn.qml
+KToggle 1.0 KToggle.qml
+KSlider 1.0 KSlider.qml
+Divider 1.0 Divider.qml
+KField 1.0 KField.qml
+ConfirmBtn 1.0 ConfirmBtn.qml
+Seg 1.0 Seg.qml
+Card 1.0 Card.qml
+Line 1.0 Line.qml
+Page 1.0 Page.qml
+SRow 1.0 SRow.qml
+SchemaGroup 1.0 SchemaGroup.qml
+Drawer 1.0 Drawer.qml
+SearchPanel 1.0 SearchPanel.qml
+SettingsWindow 1.0 SettingsWindow.qml
+OutputBox 1.0 OutputBox.qml
+singleton AppIndex 1.0 AppIndex.qml
+FavList 1.0 FavList.qml

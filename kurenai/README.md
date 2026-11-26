@@ -61,7 +61,7 @@ for you. Commands marked **sudo** change your system; read them before running t
 |---|---|---|
 | `rofi` | fallback launcher (`SUPER + SHIFT + SPACE`, and the Quickshell launcher falls back to it); themed by `rofi/kurenai.rasi` | no fallback launcher: install it, it is your safety net |
 | `matugen` | **wallpaper colours**: shell, lock screen, Rofi and borders follow the wallpaper ([docs/THEME.md](docs/THEME.md)) | the Quick Settings tiles are hidden; built-in colours stay |
-| `adw-gtk-theme`, `qt6ct`/`qt5ct`, `kitty`, `btop`, `yazi`, `zathura`, `neovim`, `spicetify` | **app colours**: each one you attach follows the same colours (`kurenai-ctl theme extras`) | that app is simply not offered / unchanged |
+| `adw-gtk-theme`, `qt6ct`/`qt5ct`, `kitty`, `btop`, `yazi`, `zathura`, `neovim`, `spicetify`, `pacsea`, `lazygit` | **app colours**: each one you attach follows the same colours (`kurenai-ctl theme extras`) | that app is simply not offered / unchanged |
 | `firefox` | **Firefox theme** (opt-in): docked tab rail / one-row horizontal tabs, detached launcher card, start page; `kurenai-ctl theme extra firefox on` ([docs/FIREFOX.md](docs/FIREFOX.md)); hide button + keys need the optional fx-autoconfig loader | not touched; nothing is attached unless you ask |
 | `nvidia-prime` (provides `prime-run`) | launcher **Prime** tab | the tab says it is not installed |
 | `brightnessctl` | brightness slider | row shows an install hint |
@@ -96,12 +96,15 @@ kurenai/
 ├── install.sh                    copies files into place after a backup; starts nothing, edits nothing
 ├── bin/
 │   ├── kurenai-ctl               setup / start / stop / validate / rollback (run `kurenai-ctl` for the list)
+│   ├── kurenai-settings          opens the Settings window (also in Rofi / the launcher); see docs/SETTINGS.md
+│   ├── kurenai-conf              settings store, favourites, bind remaps, export/import (used by the window; usable alone)
+│   ├── kurenai-hypr              monitors and input with an auto-revert timer (used by the window; usable alone)
 │   ├── kurenai-lock-supervisor   restarts the locker if it crashes (gives up after 4 crashes in 60 s)
 │   ├── kurenai-clip              clipboard-history engine (cliphist + wl-clipboard)
 │   └── kurenai-sysmon            read-only system snapshot for the monitor panel
 ├── rofi/kurenai.rasi             Rofi theme (installed to ~/.config/rofi/themes/)
 ├── matugen/                      templates for wallpaper colours (installed to ~/.local/share/kurenai/matugen/)
-├── extras/                       app colour templates + renderer (kitty gtk qt btop yazi zathura nvim spicetify firefox; to ~/.local/share/kurenai/extras/)
+├── extras/                       app colour templates + renderer (kitty gtk qt btop yazi zathura nvim spicetify pacsea lazygit firefox; to ~/.local/share/kurenai/extras/)
 ├── hypr/                         all opt-in; only kurenai.lua is KURENAI's own
 │   ├── kurenai.lua               appearance (borders, gaps, rounding, shadow, motion)
 │   ├── kurenai-binds.lua         15 keybinds (launcher + its Run/Prime/Walls tabs, panels, lock, clipboard, monitor, shortcuts)
@@ -141,7 +144,8 @@ Where things land after `install.sh`:
 
 | In the package | Installed to |
 |---|---|
-| `quickshell/kurenai`, `quickshell/kurenai-lock` | `~/.config/quickshell/` |
+| `quickshell/kurenai`, `quickshell/kurenai-lock`, `quickshell/kurenai-settings` | `~/.config/quickshell/` |
+| (written by `kurenai-ctl desktop-entry install`) | `~/.local/share/applications/kurenai-settings.desktop`, with the absolute program path (Rofi and the launcher list it) |
 | `hypr/*.lua`, `hypr/hypridle.kurenai.conf` | `~/.config/hypr/` |
 | `rofi/kurenai.rasi` | `~/.config/rofi/themes/` |
 | `matugen/` | `~/.local/share/kurenai/matugen/` |
@@ -408,6 +412,7 @@ Against the original project's "definition of done":
 | App colours (kitty, gtk, qt, btop, yazi, zathura, nvim, spicetify) | rendered and syntax-checked for all 720 generated palettes with contrast checks, attach/detach round trip verified in a fake home to restore your original files byte for byte (one exception: a file that had no final newline gets one); Neovim 0.9.5 loaded 80 generated colourschemes and picked up a live colour change; **none of the other apps was run here**, see [docs/THEME.md](docs/THEME.md) |
 | Firefox theme (CSS layer, start page, script layer) | install/undo/profile detection/colours run in a fake home with a fake `firefox`; CSS parsed with postcss; script logic run against a mock DOM. **Version 4 was run in a real Firefox 160.0.1** with real key presses (one-row tabs, detached launcher card, hide states, new tab page, start page) under a virtual-display test rig; **not reproduced:** your Hyprland session, real profile/add-ons, hover feel. See [docs/FIREFOX.md](docs/FIREFOX.md) |
 | Wallpaper colours (matugen) | real matugen 4.2.0 run over 720 generated palettes (40 test images x 9 schemes x 2 accent modes) and checked by the same guard code as Theme.qml, the Hyprland loader and real Rofi; **QML behaviour and `hyprctl reload` not run on a real desktop by me**, see [docs/THEME.md](docs/THEME.md) |
+| KURENAI Settings window (15 pages) | every page loads and the main controls work in an offscreen Qt Quick rig with stand-in Quickshell modules that run the real `kurenai-*` scripts in a throwaway home (20 + 15 scripted click/key checks; CLI suites 69 + 37 + 39); **never started under real Quickshell, Hyprland, matugen or awww by me**, see [docs/SETTINGS.md](docs/SETTINGS.md) |
 | Launcher tabs: Apps, Run, Prime, Walls | written and syntax/logic-checked in a sandbox; **not run on a real desktop by me**, see [docs/LAUNCHER.md](docs/LAUNCHER.md) |
 | Notifications, history, Do Not Disturb share one state | implemented (`NotificationStore.qml`) |
 | Quick settings act on real devices, hide what is missing | implemented; per-control behaviour in the table in section 1 |

@@ -34,22 +34,25 @@ if [ -e "$CFG/hypr/kurenai.lua" ]; then mkdir -p "$REPLACED"; mv "$CFG/hypr/kure
 cp "$SRC/hypr/kurenai.lua" "$CFG/hypr/kurenai.lua"
 # sha256 of the kurenai-binds.lua the PREVIOUS release shipped. If yours is byte-for-byte that file you never
 # edited it, so the new one can replace it (the backup above has your copy). Anything else is kept.
-PREV_BINDS_SHA="a6498c7f57a3c3ceab2e83b8c4a3f37caf4dec01a7f7c9c51fe578048ffdbdd8"
+PREV_BINDS_SHA="5340e92579ad81d698ac025ea3f78592d7176cbdf77cbf676dc82856490e7884 a6498c7f57a3c3ceab2e83b8c4a3f37caf4dec01a7f7c9c51fe578048ffdbdd8"   # the two earlier releases
 for f in kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua; do
   if [ ! -e "$CFG/hypr/$f" ]; then
     cp "$SRC/hypr/$f" "$CFG/hypr/$f"
   elif ! cmp -s "$SRC/hypr/$f" "$CFG/hypr/$f"; then
-    if [ "$f" = "kurenai-binds.lua" ] && [ "$(sha256sum "$CFG/hypr/$f" | cut -d' ' -f1)" = "$PREV_BINDS_SHA" ]; then
+    if [ "$f" = "kurenai-binds.lua" ] && case " $PREV_BINDS_SHA " in *" $(sha256sum "$CFG/hypr/$f" | cut -d' ' -f1) "*) true ;; *) false ;; esac; then
       cp "$SRC/hypr/$f" "$CFG/hypr/$f"
-      echo "     $f was the unmodified previous version: updated (adds the Run / Prime / Walls keys; your old copy is in the backup)"
+      echo "     $f was an unmodified earlier version: updated (now reads your remaps from the Settings window; your old copy is in the backup)"
     else
       cp "$SRC/hypr/$f" "$CFG/hypr/$f.new"
       echo "     kept your existing $f; new version saved as $f.new (diff $CFG/hypr/$f $CFG/hypr/$f.new)"
     fi
   fi
 done
+# kurenai-hypr.lua is GENERATED later by `kurenai-hypr apply`. Only a harmless placeholder is put here so the hook can be
+# enabled first; an existing (generated) file is never touched.
+[ -e "$CFG/hypr/kurenai-hypr.lua" ] || cp "$SRC/hypr/kurenai-hypr.lua" "$CFG/hypr/kurenai-hypr.lua"
 
-echo "3/6 Installing Quickshell configs (qs -c kurenai, qs -c kurenai-lock)..."
+echo "3/6 Installing Quickshell configs (qs -c kurenai, qs -c kurenai-lock, qs -c kurenai-settings)..."
 if [ -d "$CFG/quickshell/kurenai" ]; then
   mkdir -p "$REPLACED"; mv "$CFG/quickshell/kurenai" "$REPLACED/quickshell-kurenai"
 fi
@@ -64,8 +67,21 @@ cp -r "$SRC/quickshell/kurenai-lock" "$CFG/quickshell/kurenai-lock"
 cp "$CFG/quickshell/kurenai/Theme.qml" "$CFG/quickshell/kurenai-lock/Theme.qml"
 # if you had customised Config.qml of the lock before, it is in $REPLACED: re-apply your edits there
 
-echo "4/6 Installing kurenai-ctl and the lock supervisor to $BIN..."
+# the Settings window: also its own config, with its own copy of the theme (so it opens even when the shell is broken or stopped)
+if [ -d "$CFG/quickshell/kurenai-settings" ]; then
+  mkdir -p "$REPLACED"; mv "$CFG/quickshell/kurenai-settings" "$REPLACED/quickshell-kurenai-settings"
+fi
+cp -r "$SRC/quickshell/kurenai-settings" "$CFG/quickshell/kurenai-settings"
+cp "$CFG/quickshell/kurenai/Theme.qml" "$CFG/quickshell/kurenai-settings/Theme.qml"
+
+echo "4/6 Installing kurenai-ctl, kurenai-conf, kurenai-hypr, kurenai-settings and helpers to $BIN..."
 install -m 0755 "$SRC/bin/kurenai-ctl" "$BIN/kurenai-ctl"
+install -m 0755 "$SRC/bin/kurenai-conf" "$BIN/kurenai-conf"          # settings store, favourites, bind remaps
+install -m 0755 "$SRC/bin/kurenai-hypr" "$BIN/kurenai-hypr"          # monitors and input, with a revert timer
+install -m 0755 "$SRC/bin/kurenai-settings" "$BIN/kurenai-settings"  # opens the Settings window
+# a normal application entry, so Rofi (drun) and the launcher list "KURENAI Settings". Its Exec= is the ABSOLUTE path of the
+# program: Rofi starts entries without ~/.local/bin on PATH, so a bare "kurenai-settings" fails there.
+"$BIN/kurenai-ctl" desktop-entry install || echo "   (could not write the application entry; run later: kurenai-ctl desktop-entry install)"
 install -m 0755 "$SRC/bin/kurenai-lock-supervisor" "$BIN/kurenai-lock-supervisor"
 install -m 0755 "$SRC/bin/kurenai-clip" "$BIN/kurenai-clip"          # clipboard-history engine
 install -m 0755 "$SRC/bin/kurenai-sysmon" "$BIN/kurenai-sysmon"      # read-only snapshot for the system monitor
@@ -99,7 +115,7 @@ cp -r "$SRC/matugen" "$STATE/matugen"
 cp "$SRC/rofi/kurenai.rasi" "$STATE/matugen/kurenai.default.rasi"
 [ -f "$STATE/palette.json" ] || printf '{\n  "enabled": false\n}\n' > "$STATE/palette.json"
 [ -f "$CFG/hypr/kurenai-colors.lua" ] || cp "$SRC/hypr/kurenai-colors.lua" "$CFG/hypr/kurenai-colors.lua"
-# app colours (kitty, gtk, qt, btop, yazi, zathura, nvim, spicetify, firefox): our templates; your attach state and saved settings stay
+# app colours (kitty, gtk, qt, btop, yazi, zathura, nvim, spicetify, pacsea, lazygit, firefox): our templates; your attach state and saved settings stay
 mkdir -p "$STATE/extras"
 for d in "$SRC"/extras/*/; do n="$(basename "$d")"; rm -rf "$STATE/extras/$n"; cp -r "$d" "$STATE/extras/$n"; done
 cp "$SRC"/extras/*.awk "$STATE/extras/"
@@ -139,11 +155,13 @@ echo "  WALLPAPER COLOURS (new, needs matugen: sudo pacman -S matugen): off unti
 echo "    Quick Settings > Wallpaper colours, or:  $BIN/kurenai-ctl theme on     (then every wallpaper you set recolours the shell)"
 echo "    Back to the original colours:  $BIN/kurenai-ctl theme off     Overview: $BIN/kurenai-ctl theme status"
 echo
-echo "  APP COLOURS (new): kitty, GTK, Qt, btop, yazi, zathura, Neovim, Spicetify can follow the same colours. Nothing is attached yet."
+echo "  APP COLOURS (new): kitty, GTK, Qt, btop, yazi, zathura, Neovim, Spicetify, Pacsea, lazygit can follow the same colours. Nothing is attached yet."
 echo "    $BIN/kurenai-ctl theme extras             see what is available;   $BIN/kurenai-ctl theme extra kitty on   attach one"
 echo "    Each 'on' prints exactly what it changes in that app's config (after a backup); 'off' undoes it. docs/THEME.md"
 echo "  FIREFOX (new, opt-in): $BIN/kurenai-ctl theme extra firefox on     (restart Firefox afterwards; not yet run in Firefox 160, see docs/FIREFOX.md)"
 echo
+echo "  SETTINGS WINDOW: open it from Rofi or the launcher (\"KURENAI Settings\"), or run:  $BIN/kurenai-settings"
+echo "    It works with the shell stopped, and changes nothing until you press something in it. Every control can show its command."
 echo "  SHORTCUTS PAGE: works right away from a terminal:  qs -c kurenai ipc call shortcuts toggle"
 if ! grep -q 'shortcuts toggle' "$CFG/hypr/kurenai-binds.lua" 2>/dev/null; then
   echo "  For a key, add ONE line to the table in $CFG/hypr/kurenai-binds.lua (after the SUPER + L line):"

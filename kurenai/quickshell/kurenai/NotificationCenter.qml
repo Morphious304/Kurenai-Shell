@@ -120,6 +120,59 @@ PanelOverlay {
 
             Rectangle { width: parent.width; height: 1; color: Theme.border }
 
+            // ---- another program owns notifications: nothing can arrive here, so say so -------------------------
+            Rectangle {
+                visible: NotificationStore.owner === "other"
+                width: parent.width
+                height: ownerCol.implicitHeight + Theme.s3 * 2
+                radius: Theme.rMd
+                color: Theme.surface
+                border.width: 1
+                border.color: Theme.amber
+                Column {
+                    id: ownerCol
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: Theme.s3 }
+                    spacing: Theme.s2
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.Wrap
+                        textFormat: Text.PlainText
+                        text: NotificationStore.ownerName + " is running and owns notifications, so they cannot pop up here. Only one program can show them."
+                        font.family: Theme.fontUi
+                        font.pixelSize: Theme.fsSmall + 1
+                        color: Theme.text
+                    }
+                    Btn {
+                        visible: NotificationStore.ownerIsKnownDaemon
+                        width: parent.width
+                        height: 32
+                        center: true
+                        text: "Show notifications here instead"
+                        onClicked: NotificationStore.takeOver()
+                    }
+                    Text {
+                        visible: NotificationStore.ownerIsKnownDaemon
+                        width: parent.width
+                        wrapMode: Text.Wrap
+                        textFormat: Text.PlainText
+                        text: "Stops " + NotificationStore.ownerName + " and restarts this shell. Undo: kurenai-ctl notif-restore"
+                        font.family: Theme.fontUi
+                        font.pixelSize: Theme.fsSmall
+                        color: Theme.muted
+                    }
+                    Text {
+                        visible: !NotificationStore.ownerIsKnownDaemon
+                        width: parent.width
+                        wrapMode: Text.Wrap
+                        textFormat: Text.PlainText
+                        text: "Stop that program first (kurenai-ctl notif-status shows where it starts), then: kurenai-ctl restart"
+                        font.family: Theme.fontUi
+                        font.pixelSize: Theme.fsSmall
+                        color: Theme.muted
+                    }
+                }
+            }
+
             // ---- empty state ----------------------------------------------------------
             Item {
                 visible: NotificationStore.count === 0

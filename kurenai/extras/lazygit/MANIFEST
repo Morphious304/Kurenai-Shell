@@ -1,0 +1,2 @@
+lgblock|lazygit.yml.tpl|@CFG@/lazygit/config.yml|hash
+lgfile|lazygit.yml.tpl|@CFG@/lazygit/kurenai-theme.yml

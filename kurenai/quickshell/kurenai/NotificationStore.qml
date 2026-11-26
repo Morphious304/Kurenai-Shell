@@ -1,6 +1,7 @@
 pragma Singleton
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Notifications
 
 // The ONE notification state. The bar badge, the popups, the centre and Do Not Disturb all read
@@ -105,6 +106,45 @@ Singleton {
         id: publishTimer
         interval: 300
         onTriggered: Quickshell.execDetached(["sh", "-c", 'printf %s "$1" > "$XDG_RUNTIME_DIR/kurenai-notifications"', "sh", String(root.count)])
+    }
+
+    // ---- who owns org.freedesktop.Notifications ----------------------------------------------------------------------
+    // Only one program can. If mako, dunst or swaync has the name, this server never receives a notification, so no
+    // popup can ever appear (the centre stays empty too). The check asks the session bus read-only (busctl) and compares
+    // the owner's pid with ours: sh's parent is this Quickshell process.
+    //   owner: "unknown" (not checked yet / no busctl) | "ours" | "other" | "none"
+    property string owner: "unknown"
+    property string ownerName: ""
+    readonly property bool ownerIsKnownDaemon: ownerName === "mako" || ownerName === "dunst" || ownerName === "swaync"
+    function checkOwner() { if (!ownerProbe.running) ownerProbe.running = true; }
+    function _ownerRead(text) {
+        const t = String(text || "").trim();
+        const bar = t.indexOf("|");
+        if (bar < 0 || t.charAt(0) === "-") { owner = "unknown"; ownerName = ""; return; }
+        const me = t.slice(0, bar).trim();
+        const rest = t.slice(bar + 1).trim();
+        if (rest === "") { owner = "none"; ownerName = ""; return; }
+        const sp = rest.indexOf(" ");
+        const pid = sp < 0 ? rest : rest.slice(0, sp);
+        const comm = sp < 0 ? "" : rest.slice(sp + 1).trim();
+        if (pid === me || comm === "quickshell" || comm === "qs") { owner = "ours"; ownerName = ""; return; }
+        if (owner !== "other") console.warn("[kurenai] notifications are owned by '" + comm + "' (pid " + pid + "): popups cannot appear until it is stopped (kurenai-ctl notif-takeover)");
+        owner = "other";
+        ownerName = comm;
+    }
+    Process {
+        id: ownerProbe
+        command: ["sh", "-c", "command -v busctl >/dev/null 2>&1 || { echo '-|'; exit 0; }; " +
+                  "o=$(busctl --user status org.freedesktop.Notifications 2>/dev/null | awk -F= '/^PID=/{p=$2} /^Comm=/{c=$2} END{if (p) print p, c}'); " +
+                  "echo \"$PPID|$o\""]
+        stdout: StdioCollector { id: ownerOut; onStreamFinished: root._ownerRead(ownerOut.text) }
+    }
+    Timer { interval: 2500; running: true; repeat: false; onTriggered: root.checkOwner() }     // after the server had time to register
+    Timer { interval: 30000; running: true; repeat: true; onTriggered: root.checkOwner() }
+
+    // stop the other daemon (remembered, undo: kurenai-ctl notif-restore) and restart the shell so it can register
+    function takeOver() {
+        Quickshell.execDetached(["sh", "-c", 'k=$(command -v kurenai-ctl || echo "$HOME/.local/bin/kurenai-ctl"); "$k" notif-takeover; sleep 1; exec "$k" restart']);
     }
 
     // ---- server ------------------------------------------------------------

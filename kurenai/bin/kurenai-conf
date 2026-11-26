@@ -1,0 +1,477 @@
+#!/usr/bin/env bash
+# kurenai-conf: the settings store behind the KURENAI settings window (and usable on its own, from any terminal).
+#
+#   schema [--json]                     every setting: group, type, default, range, label
+#   list [--json] [GROUP]               effective value, default, and whether you changed it
+#   get KEY | set KEY VALUE... | reset KEY|--all
+#   fav list|add|remove|move|clear      launcher favourites (Apps / Prime)       [--prime]
+#   recent list|clear                   launcher recents                         [--prime]
+#   binds list|set|disable|reset        remap the KURENAI keybinds (by their default chord)
+#   export FILE | import FILE           settings.json + binds.conf as one .tar.gz
+#   path                                where everything lives
+#
+# What it touches (nothing else):
+#   ~/.config/kurenai/settings.json     only your CHANGES; a missing key means "default". Read live by the shell (Config.qml).
+#   ~/.config/kurenai/binds.conf        lines "DEFAULT CHORD => NEW CHORD" ("-" = switched off). Read by kurenai-binds.lua.
+#   ~/.local/share/kurenai/launcher.json  favourites / recents (the shell's own file; same format)
+# It never needs root, never touches hyprland.lua, never reads or writes passwords.
+set -u
+
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+CONF_DIR="$CFG/kurenai"
+SETTINGS="$CONF_DIR/settings.json"
+BINDS_CONF="$CONF_DIR/binds.conf"
+HYPR_DIR="$CFG/hypr"
+BINDS_LUA="$HYPR_DIR/kurenai-binds.lua"
+STATE="${XDG_DATA_HOME:-$HOME/.local/share}/kurenai"
+LAUNCHER="$STATE/launcher.json"
+
+die()  { printf 'kurenai-conf: %s\n' "$*" >&2; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+# ---------------------------------------------------------------------------------------------------------------------
+# The schema. group|key|type|default|min|max|choices|label|help      (no quotes or pipes in text: it is printed as JSON)
+# Types: bool int real string list enum.  list defaults are JSON.  Keep in step with quickshell/kurenai/Config.qml
+# (a test compares them).
+# ---------------------------------------------------------------------------------------------------------------------
+SCHEMA='launcher|terminal|string|kitty||||Terminal|Used for apps whose desktop entry says Terminal=true, and for Shift+Enter in Run.
+launcher|launcherMaxResults|int|40|5|200||Maximum results|How many matches the launcher keeps.
+launcher|launcherVisibleRows|int|7|3|15||Visible rows|Rows shown before the list scrolls.
+launcher|launcherMaxRecent|int|8|0|30||Recent apps|How many recently launched apps are remembered.
+launcher|launcherDocked|bool|true||||Dock to the bar|On: hangs from the bar. Off: a floating card.
+launcher|runHistory|bool|true||||Remember Run commands|Off: nothing typed in the Run tab is stored. A command starting with a space is never stored.
+launcher|runHistoryMax|int|50|0|500||Run history size|Commands kept.
+launcher|primeCommand|string|prime-run||||Prime wrapper|The command that sends an app to the NVIDIA GPU.
+wallpaper|wallpaperDirs|list|["~/Pictures/Wallpapers"]||||Wallpaper folders|Every image under these folders is listed, subfolders included.
+wallpaper|wallpaperExtensions|list|["jpg", "jpeg", "png", "webp", "gif", "bmp", "tga", "tiff"]||||Image types|File extensions that count as wallpapers.
+wallpaper|wallpaperTransition|enum|random|||none,simple,fade,left,right,top,bottom,wipe,wave,grow,center,any,outer,random|Transition|awww transition used when a wallpaper changes.
+wallpaper|wallpaperTransitionDuration|real|0|0|30||Transition seconds|0 = awww default.
+wallpaper|wallpaperColumns|int|3|1|8||Grid columns|Thumbnails per row in the Walls tab.
+wallpaper|wallpaperVisibleRows|int|3|1|8||Grid rows|Rows visible before scrolling.
+wallpaper|wallpaperThumbDelay|int|90|0|1000||Thumbnail delay (ms)|How long a cell must stay on screen before its thumbnail is decoded.
+wallpaper|wallpaperAnimatePreview|bool|true||||Animate GIF preview|The big preview plays animated GIFs.
+panels|quickSettingsDocked|bool|true||||Quick settings docked|Hangs from the bar; floats over a fullscreen window.
+panels|qsMaxListRows|int|6|3|15||Device list rows|Wi-Fi, Bluetooth and audio lists scroll beyond this.
+panels|brightnessDevice|string|||||Backlight device|Empty = first backlight. A name from brightnessctl -l pins one.
+panels|brightnessExponent|int|4|0|8||Brightness curve|Must match your brightness keybinds. 0 = plain linear.
+panels|brightnessMin|int|2|0|20||Brightness floor|Lowest percent the slider and keys reach.
+panels|nightLightTemp|int|4000|1000|6500||Night light (K)|Colour temperature used with hyprsunset.
+panels|audioTools|list|["pwvucontrol", "pavucontrol"]||||Audio tools|First installed one is used for the shortcut.
+panels|networkTools|list|["nm-connection-editor"]||||Network tools|First installed one is used.
+panels|bluetoothTools|list|["blueman-manager", "overskride"]||||Bluetooth tools|First installed one is used.
+panels|popoverDocked|bool|true||||Popovers docked|Media, calendar and power menu hang from the bar.
+panels|mediaBarChars|int|28|8|80||Media text length|Characters of Title - Artist shown in the bar.
+panels|firstDayOfWeek|int|-1|-1|6||First day of week|-1 = your locale, 0 = Sunday, 1 = Monday.
+power|lockTools|list|["hyprlock", "swaylock", "gtklock", "waylock"]||||Fallback lockers|Only used when the KURENAI lock screen is not running.
+power|lockBeforeSuspend|bool|true||||Lock before suspend|Suspend from the power menu locks first.
+shortcuts|hyprMainFile|string|||||Hyprland main file|Empty = ~/.config/hypr/hyprland.lua. Everything it requires is followed.
+shortcuts|shortcutsVisibleRows|int|12|5|30||Shortcut rows|Rows visible before the list scrolls.
+osd|osdTimeout|int|1400|400|6000||OSD time (ms)|How long the on-screen display stays.
+osd|osdVolume|bool|true||||Volume OSD|
+osd|osdMic|bool|true||||Microphone OSD|
+osd|osdBrightness|bool|true||||Brightness OSD|Needs the brightness key change shown by kurenai-ctl media-binds.
+osd|osdMediaPlayPause|bool|true||||Play/pause OSD|
+osd|osdMediaTrack|bool|true||||Track change OSD|Shows on every track change, automatic ones too.
+clipboard|clipboardEnabled|bool|true||||Record clipboard|Off: nothing is recorded at all.
+clipboard|clipboardRetentionDays|int|30|0|3650||Keep history (days)|Older entries are deleted. Pinned items are kept. 0 = no automatic deletion.
+clipboard|clipboardMaxItems|int|500|10|5000||Maximum entries|Oldest are dropped beyond this.
+clipboard|clipboardMaxStoreMB|int|10|1|200||Biggest item (MB)|Larger single items are not recorded.
+sysmon|sysmonInterval|int|2000|500|10000||Sample every (ms)|It only samples while its panel is open.
+notifications|maxPopups|int|4|1|10||Popups at once|Extra notifications wait in the centre.
+notifications|popupTimeoutLow|int|4000|500|60000||Low urgency (ms)|
+notifications|popupTimeoutNormal|int|7000|500|60000||Normal urgency (ms)|Critical notifications never time out.
+lock|lock.fingerprint|bool|true||||Fingerprint|Needs fprintd and an enrolled finger. Password always works.
+lock|lock.maxAttempts|int|5|1|20||Attempts before cooldown|Wrong passwords in a row.
+lock|lock.cooldownSeconds|int|10|1|600||Cooldown (s)|
+lock|lock.useAwww|bool|true||||Use current wallpaper|Off: the fallback image or a generated pattern.
+lock|lock.wallpaper|string|||||Fallback wallpaper|Image path used when awww is unavailable.
+lock|lock.dim|real|0.5|0|1||Wallpaper dimming|0 = none, 1 = black.
+lock|lock.idleHideSeconds|int|12|2|120||Fade input after (s)|The input field fades after this long untouched.
+lock|lock.deviceLabel|string|ThinkPad P53||||Device label|Shown on the lock screen.
+lock|lock.showNotificationCount|bool|true||||Notification count|A count only, never the contents.'
+
+# one schema row, or nothing
+row() { printf '%s\n' "$SCHEMA" | awk -F'|' -v k="$1" '$2==k {print; exit}'; }
+keys() { printf '%s\n' "$SCHEMA" | awk -F'|' '{print $2}'; }
+field() { printf '%s' "$1" | awk -F'|' -v n="$2" '{print $n}'; }   # 1 group 2 key 3 type 4 default 5 min 6 max 7 choices 8 label 9 help
+
+# ---------------------------------------------------------------- the overrides file: one `  "key": literal` per line
+declare -A OVR=()
+OVR_BAD=0
+load_ovr() {
+  OVR=(); OVR_BAD=0
+  [ -f "$SETTINGS" ] || return 0
+  local line k v
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "{"|"}"|"") continue ;;
+    esac
+    if [[ "$line" =~ ^[[:space:]]*\"([A-Za-z.]+)\":[[:space:]]*(.*[^,[:space:]])[,]?[[:space:]]*$ ]]; then
+      k="${BASH_REMATCH[1]}"; v="${BASH_REMATCH[2]}"; OVR["$k"]="$v"
+    else
+      OVR_BAD=1
+    fi
+  done < "$SETTINGS"
+}
+# overwrite in place (same inode: the shell's file watcher keeps following it), keep one backup
+put_file() { mkdir -p "$(dirname "$1")"; [ -f "$1" ] && cp -f "$1" "$1.bak" 2>/dev/null; cat > "$1" < "$2"; }
+save_ovr() {
+  [ "$OVR_BAD" = 0 ] || die "$SETTINGS has lines I do not understand; I will not rewrite it. Fix it by hand, or: kurenai-conf reset --all (a copy is kept as settings.json.bak)"
+  local tmp; tmp="$(mktemp)" || die "no temp file"
+  local k first=1
+  {
+    echo "{"
+    for k in $(printf '%s\n' "${!OVR[@]}" | LC_ALL=C sort); do
+      [ "$first" = 1 ] || printf ',\n'
+      printf '  "%s": %s' "$k" "${OVR[$k]}"; first=0
+    done
+    [ "$first" = 1 ] || printf '\n'
+    echo "}"
+  } > "$tmp"
+  put_file "$SETTINGS" "$tmp"; rm -f "$tmp"
+}
+
+# ---------------------------------------------------------------- value checking: prints the JSON literal or fails
+bad_text() { case "$1" in *\"*|*\\*|*[[:cntrl:]]*) return 0 ;; esac; [ "${#1}" -gt 200 ]; }
+inrange() { awk -v v="$1" -v lo="$2" -v hi="$3" 'BEGIN{ if ((lo==""||v+0>=lo+0) && (hi==""||v+0<=hi+0)) exit 0; exit 1 }'; }
+norm_value() {   # norm_value KEY VALUE...   (prints the literal)
+  local key="$1"; shift
+  local r; r="$(row "$key")"; [ -n "$r" ] || { echo "unknown setting: $key (see: kurenai-conf schema)" >&2; return 1; }
+  local type min max choices
+  type="$(field "$r" 3)"; min="$(field "$r" 5)"; max="$(field "$r" 6)"; choices="$(field "$r" 7)"
+  case "$type" in
+    bool)
+      case "$(printf '%s' "${1:-}" | tr 'A-Z' 'a-z')" in
+        true|on|yes|1) echo true ;; false|off|no|0) echo false ;;
+        *) echo "$key: use true or false" >&2; return 1 ;;
+      esac ;;
+    int)
+      [[ "${1:-}" =~ ^-?[0-9]+$ ]] || { echo "$key: a whole number is needed" >&2; return 1; }
+      inrange "$1" "$min" "$max" || { echo "$key: must be between $min and $max" >&2; return 1; }
+      local sign=""; [ "${1:0:1}" = "-" ] && sign="-"
+      local digits="$((10#${1#-}))"; [ "$digits" = 0 ] && sign=""
+      printf '%s%s\n' "$sign" "$digits" ;;
+    real)
+      [[ "${1:-}" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || { echo "$key: a number is needed" >&2; return 1; }
+      inrange "$1" "$min" "$max" || { echo "$key: must be between $min and $max" >&2; return 1; }
+      echo "$1" ;;
+    enum)
+      case ",$choices," in *",${1:-},"*) printf '"%s"\n' "$1" ;; *) echo "$key: one of $choices" >&2; return 1 ;; esac ;;
+    string)
+      bad_text "${1:-}" && { echo "$key: no quotes, backslashes or control characters, at most 200 characters" >&2; return 1; }
+      printf '"%s"\n' "${1:-}" ;;
+    list)
+      local items=() it
+      if [ "$#" -eq 1 ]; then IFS=',' read -r -a items <<< "$1"; else items=("$@"); fi
+      [ "${#items[@]}" -le 30 ] || { echo "$key: at most 30 entries" >&2; return 1; }
+      local out="" sep=""
+      for it in "${items[@]}"; do
+        it="${it#"${it%%[![:space:]]*}"}"; it="${it%"${it##*[![:space:]]}"}"
+        [ -n "$it" ] || continue
+        bad_text "$it" && { echo "$key: entries may not contain quotes, backslashes or control characters" >&2; return 1; }
+        out="$out$sep\"$it\""; sep=", "
+      done
+      printf '[%s]\n' "$out" ;;
+  esac
+}
+
+jstr() { printf '"%s"' "$1"; }                    # schema text is quote-free by construction
+default_lit() {   # JSON literal of the default
+  local r type d; r="$(row "$1")"; type="$(field "$r" 3)"; d="$(field "$r" 4)"
+  case "$type" in
+    bool|int|real|list) printf '%s' "$d" ;;
+    *) printf '"%s"' "$d" ;;
+  esac
+}
+eff_lit() { if [ -n "${OVR[$1]+x}" ]; then printf '%s' "${OVR[$1]}"; else default_lit "$1"; fi; }
+plain() { local v="$1"; case "$v" in \"*\") v="${v#\"}"; v="${v%\"}" ;; esac; printf '%s' "$v"; }
+
+# ---------------------------------------------------------------- settings commands
+cmd_schema() {
+  if [ "${1:-}" = "--json" ]; then
+    local first=1 r
+    printf '[\n'
+    while IFS= read -r r; do
+      [ "$first" = 1 ] || printf ',\n'; first=0
+      local type min max choices
+      type="$(field "$r" 3)"; min="$(field "$r" 5)"; max="$(field "$r" 6)"; choices="$(field "$r" 7)"
+      printf '  {"group": "%s", "key": "%s", "type": "%s", "default": %s' "$(field "$r" 1)" "$(field "$r" 2)" "$type" "$(default_lit "$(field "$r" 2)")"
+      [ -z "$min" ] || printf ', "min": %s' "$min"
+      [ -z "$max" ] || printf ', "max": %s' "$max"
+      if [ -n "$choices" ]; then printf ', "choices": ['; printf '"%s"' "${choices//,/\", \"}"; printf ']'; fi
+      printf ', "label": "%s", "help": "%s"}' "$(field "$r" 8)" "$(field "$r" 9)"
+    done <<< "$SCHEMA"
+    printf '\n]\n'
+  else
+    printf '%s\n' "$SCHEMA" | awk -F'|' '{printf "%-14s %-28s %-7s default=%s\n", $1, $2, $3, $4}'
+  fi
+}
+cmd_list() {
+  local json=0 grp=""
+  for a in "$@"; do case "$a" in --json) json=1 ;; *) grp="$a" ;; esac; done
+  load_ovr
+  local r k first=1 changed
+  [ "$json" = 1 ] && printf '{\n  "file": "%s",\n  "fileOk": %s,\n  "settings": [\n' "$SETTINGS" "$([ "$OVR_BAD" = 0 ] && echo true || echo false)"
+  while IFS= read -r r; do
+    k="$(field "$r" 2)"
+    [ -z "$grp" ] || [ "$(field "$r" 1)" = "$grp" ] || continue
+    changed=false; [ -n "${OVR[$k]+x}" ] && changed=true
+    if [ "$json" = 1 ]; then
+      [ "$first" = 1 ] || printf ',\n'; first=0
+      printf '    {"key": "%s", "value": %s, "default": %s, "changed": %s}' "$k" "$(eff_lit "$k")" "$(default_lit "$k")" "$changed"
+    else
+      printf '%-30s %-30s %s\n' "$k" "$(plain "$(eff_lit "$k")")" "$([ "$changed" = true ] && echo '(changed)' || echo '')"
+    fi
+  done <<< "$SCHEMA"
+  [ "$json" = 1 ] && printf '\n  ]\n}\n'
+  return 0
+}
+cmd_get() {
+  [ -n "${1:-}" ] || die "usage: kurenai-conf get KEY"
+  [ -n "$(row "$1")" ] || die "unknown setting: $1"
+  load_ovr; plain "$(eff_lit "$1")"; echo
+}
+cmd_set() {
+  [ "$#" -ge 1 ] || die "usage: kurenai-conf set KEY VALUE..."
+  local key="${1:-}"; shift
+  load_ovr
+  local lit; lit="$(norm_value "$key" "$@")" || exit 1
+  if [ "$lit" = "$(default_lit "$key")" ]; then unset 'OVR[$key]'; else OVR["$key"]="$lit"; fi
+  save_ovr
+  echo "$key = $(plain "$lit")$([ -n "${OVR[$key]+x}" ] || echo '   (the default; override removed)')"
+}
+cmd_reset() {
+  load_ovr
+  if [ "${1:-}" = "--all" ]; then OVR=(); OVR_BAD=0; save_ovr; echo "All settings are back to their defaults."; return 0; fi
+  [ -n "${1:-}" ] || die "usage: kurenai-conf reset KEY | --all"
+  [ -n "$(row "$1")" ] || die "unknown setting: $1"
+  unset 'OVR[$1]'; save_ovr; echo "$1 is back to its default ($(plain "$(default_lit "$1")"))."
+}
+
+# ---------------------------------------------------------------- favourites / recents (launcher.json, same format the shell writes)
+LJ_KEYS="favorites recent primeFavorites primeRecent"
+declare -A LJ=()
+lj_read() {   # fills LJ[key]="id1\nid2..."
+  LJ=(); local k flat seg
+  flat=""; [ -f "$LAUNCHER" ] && flat="$(tr -d '\n' < "$LAUNCHER")"
+  for k in $LJ_KEYS; do
+    seg="$(printf '%s' "$flat" | sed -n "s/.*\"$k\": *\[\([^]]*\)\].*/\1/p")"
+    LJ[$k]="$(printf '%s' "$seg" | grep -o '"[^"]*"' | sed 's/^"//;s/"$//')"
+  done
+}
+lj_write() {
+  local tmp k first=1 id n
+  tmp="$(mktemp)" || die "no temp file"
+  { echo "{"
+    for k in $LJ_KEYS; do
+      [ "$first" = 1 ] || printf ',\n'; first=0
+      if [ -z "${LJ[$k]}" ]; then printf '  "%s": []' "$k"
+      else
+        printf '  "%s": [\n' "$k"; n=0
+        while IFS= read -r id; do [ -n "$id" ] || continue; [ "$n" = 0 ] || printf ',\n'; printf '    "%s"' "$id"; n=1; done <<< "${LJ[$k]}"
+        printf '\n  ]'
+      fi
+    done
+    printf '\n}\n'
+  } > "$tmp"
+  put_file "$LAUNCHER" "$tmp"; rm -f "$tmp"
+}
+cmd_fav() {
+  local sub="${1:-list}"; shift || true
+  local mode="apps" id="" json=0 a rest=()
+  for a in "$@"; do case "$a" in --prime|prime) mode=prime ;; apps|--apps) mode=apps ;; --json) json=1 ;; *) rest+=("$a") ;; esac; done
+  local k="favorites"; [ "$mode" = prime ] && k="primeFavorites"
+  lj_read
+  case "$sub" in
+    list)
+      if [ "$json" = 1 ]; then
+        local first=1 line; printf '['
+        while IFS= read -r line; do [ -n "$line" ] || continue; [ "$first" = 1 ] || printf ', '; first=0; printf '"%s"' "$line"; done <<< "${LJ[$k]}"
+        printf ']\n'
+      else printf '%s\n' "${LJ[$k]}" | sed '/^$/d'; fi ;;
+    add|remove|move)
+      id="${rest[0]:-}"; [[ "$id" =~ ^[A-Za-z0-9._@+:-]+$ ]] || die "a desktop entry id is needed, like org.mozilla.firefox.desktop"
+      local cur new=""; cur="$(printf '%s\n' "${LJ[$k]}" | sed '/^$/d')"
+      case "$sub" in
+        add) printf '%s\n' "$cur" | grep -qxF -- "$id" && { echo "$id is already a favourite."; return 0; }
+             new="$(printf '%s\n%s\n' "$cur" "$id" | sed '/^$/d')" ;;
+        remove) new="$(printf '%s\n' "$cur" | grep -vxF -- "$id")" ;;
+        move)
+          local dir="${rest[1]:-}"; printf '%s\n' "$cur" | grep -qxF -- "$id" || die "$id is not a favourite"
+          case "$dir" in
+            top) new="$(printf '%s\n' "$id"; printf '%s\n' "$cur" | grep -vxF -- "$id")" ;;
+            up|down) new="$(printf '%s\n' "$cur" | awk -v id="$id" -v d="$dir" '{a[NR]=$0; if($0==id)p=NR} END{ q=(d=="up")?p-1:p+1; if(q>=1&&q<=NR){t=a[p];a[p]=a[q];a[q]=t} for(i=1;i<=NR;i++)print a[i] }')" ;;
+            *) die "usage: kurenai-conf fav move ID up|down|top [--prime]" ;;
+          esac ;;
+      esac
+      LJ[$k]="$(printf '%s\n' "$new" | sed '/^$/d')"; lj_write; echo "$sub: $id ($mode)" ;;
+    clear) LJ[$k]=""; lj_write; echo "Favourites ($mode) cleared." ;;
+    *) die "usage: kurenai-conf fav list|add|remove|move|clear [--prime]" ;;
+  esac
+}
+cmd_recent() {
+  local sub="${1:-list}"; shift || true
+  local k="recent" a json=0
+  for a in "$@"; do case "$a" in --prime|prime) k="primeRecent" ;; --json) json=1 ;; esac; done
+  lj_read
+  case "$sub" in
+    list) printf '%s\n' "${LJ[$k]}" | sed '/^$/d' ;;
+    clear) LJ[$k]=""; lj_write; echo "Recents cleared." ;;
+    *) die "usage: kurenai-conf recent list|clear [--prime]" ;;
+  esac
+}
+
+# ---------------------------------------------------------------- keybinds (kurenai-binds.lua + binds.conf)
+bind_label() {
+  case "$1" in
+    "SUPER + SPACE") echo "Launcher" ;; "SUPER + SHIFT + SPACE") echo "Rofi launcher" ;;
+    "SUPER + SHIFT + R") echo "Launcher: Run" ;; "SUPER + SHIFT + P") echo "Launcher: Prime (NVIDIA)" ;; "SUPER + SHIFT + W") echo "Launcher: Wallpapers" ;;
+    "SUPER + N") echo "Notification centre" ;; "SUPER + SHIFT + N") echo "Do not disturb" ;;
+    "SUPER + A") echo "Quick settings" ;; "SUPER + C") echo "Calendar" ;; "SUPER + SHIFT + M") echo "Media" ;;
+    "SUPER + ESCAPE") echo "Power menu" ;; "SUPER + L") echo "Lock screen" ;; "SUPER + V") echo "Clipboard history" ;;
+    "SUPER + I") echo "System monitor" ;; "SUPER + SLASH") echo "Keyboard shortcuts" ;;
+    *) echo "$1" ;;
+  esac
+}
+declare -A BOV=()
+load_bov() {
+  BOV=(); [ -f "$BINDS_CONF" ] || return 0
+  local line d n
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    if [[ "$line" =~ ^(.+)\ =\>\ (.+)$ ]]; then d="${BASH_REMATCH[1]}"; n="${BASH_REMATCH[2]}"; BOV["$d"]="$n"; fi
+  done < "$BINDS_CONF"
+}
+save_bov() {
+  local tmp d; tmp="$(mktemp)" || die "no temp file"
+  { printf '%s\n' "${!BOV[@]}" | LC_ALL=C sort | while IFS= read -r d; do [ -n "$d" ] && printf '%s => %s\n' "$d" "${BOV[$d]}"; done; } > "$tmp"
+  put_file "$BINDS_CONF" "$tmp"; rm -f "$tmp"
+  # Hyprland re-reads the Lua config on reload; only bother if the binds hook is active
+  if have hyprctl && grep -F "KURENAI-BINDS-HOOK" "$HYPR_DIR/hyprland.lua" 2>/dev/null | grep -qv '^[[:space:]]*--'; then hyprctl reload >/dev/null 2>&1; fi
+  # an older kurenai-binds.lua (kept by the installer because you had edited it) does not read this file at all
+  if [ -f "$BINDS_LUA" ] && ! grep -q 'binds.conf' "$BINDS_LUA"; then
+    echo "note: your $BINDS_LUA is an older copy that does not read these changes. Compare it with kurenai-binds.lua.new (same folder) and merge, or the remap has no effect." >&2
+  fi
+}
+default_binds() {   # prints "chord<TAB>action-text" for each entry of kurenai-binds.lua
+  [ -f "$BINDS_LUA" ] || die "$BINDS_LUA not found (run install.sh)"
+  sed -n 's/^[[:space:]]*{ "\([^"]*\)",[[:space:]]*\(.*\)},[[:space:]]*\(--.*\)\{0,1\}$/\1\t\2/p' "$BINDS_LUA" | sed 's/[[:space:]]*$//'
+}
+MODS="SUPER SHIFT CTRL CONTROL ALT MOD1 MOD2 MOD3 MOD4 MOD5 CAPS"
+valid_chord() {
+  [[ "$1" =~ ^[A-Za-z0-9_]+(\ \+\ [A-Za-z0-9_]+)*$ ]] || return 1
+  local last="${1##* }"; last="$(printf '%s' "$last" | tr 'a-z' 'A-Z')"
+  case " $MODS " in *" $last "*) return 1 ;; esac
+  return 0
+}
+upper() { printf '%s' "$1" | tr 'a-z' 'A-Z'; }
+cmd_binds() {
+  local sub="${1:-list}"; shift || true
+  load_bov
+  local json=0 a rest=()
+  for a in "$@"; do case "$a" in --json) json=1 ;; *) rest+=("$a") ;; esac; done
+  case "$sub" in
+    list)
+      local first=1 d act cur state
+      [ "$json" = 1 ] && printf '['
+      while IFS=$'\t' read -r d act; do
+        [ -n "$d" ] || continue
+        cur="$d"; state=default
+        if [ -n "${BOV[$d]+x}" ]; then cur="${BOV[$d]}"; state=remapped; [ "$cur" = "-" ] && state=disabled; fi
+        if [ "$json" = 1 ]; then
+          [ "$first" = 1 ] || printf ','; first=0
+          printf '\n  {"id": "%s", "label": "%s", "default": "%s", "chord": "%s", "state": "%s"}' "$d" "$(bind_label "$d")" "$d" "$cur" "$state"
+        else printf '%-26s -> %-26s %-9s %s\n' "$d" "$cur" "$state" "$(bind_label "$d")"; fi
+      done < <(default_binds)
+      [ "$json" = 1 ] && printf '\n]\n'
+      return 0 ;;
+    set)
+      local id="${rest[0]:-}" new; new="$(upper "${rest[*]:1}")"
+      [ -n "$id" ] && [ -n "$new" ] || die "usage: kurenai-conf binds set 'DEFAULT CHORD' 'NEW CHORD'   (example: 'SUPER + SPACE' 'SUPER + ALT + SPACE')"
+      default_binds | cut -f1 | grep -qxF -- "$id" || die "no KURENAI bind has the default chord '$id' (see: kurenai-conf binds list)"
+      valid_chord "$new" || die "'$new' is not a chord: use MODIFIERS and one key, like 'SUPER + ALT + K' (the last part must be a key)"
+      local d cur
+      while IFS=$'\t' read -r d _; do
+        [ "$d" != "$id" ] || continue
+        cur="$d"; [ -n "${BOV[$d]+x}" ] && cur="${BOV[$d]}"
+        [ "$cur" != "$new" ] || die "'$new' is already used by KURENAI's '$(bind_label "$d")'"
+      done < <(default_binds)
+      if [ "$new" = "$id" ]; then unset 'BOV[$id]'; else BOV["$id"]="$new"; fi
+      save_bov; echo "$(bind_label "$id"): $new   (check clashes with your own binds: kurenai-ctl binds-check)" ;;
+    disable)
+      local id="${rest[*]:-}"; default_binds | cut -f1 | grep -qxF -- "$id" || die "no KURENAI bind has the default chord '$id'"
+      BOV["$id"]="-"; save_bov; echo "$(bind_label "$id"): switched off." ;;
+    reset)
+      if [ "${rest[0]:-}" = "--all" ]; then BOV=(); save_bov; echo "All KURENAI binds are back to their default chords."; return 0; fi
+      local id="${rest[*]:-}"; [ -n "$id" ] || die "usage: kurenai-conf binds reset 'DEFAULT CHORD' | --all"
+      unset 'BOV[$id]'; save_bov; echo "$(bind_label "$id"): default chord restored." ;;
+    *) die "usage: kurenai-conf binds list|set|disable|reset" ;;
+  esac
+}
+
+# ---------------------------------------------------------------- export / import
+cmd_export() {
+  local out="${1:-}"; [ -n "$out" ] || die "usage: kurenai-conf export FILE.tar.gz"
+  local files=() f
+  for f in settings.json binds.conf; do [ -f "$CONF_DIR/$f" ] && files+=("$f"); done
+  [ "${#files[@]}" -gt 0 ] || die "nothing to export: you have not changed any setting or bind"
+  tar czf "$out" -C "$CONF_DIR" "${files[@]}" || die "could not write $out"
+  echo "Exported ${files[*]} to $out"
+}
+cmd_import() {
+  local in="${1:-}"; [ -f "$in" ] || die "usage: kurenai-conf import FILE.tar.gz"
+  local tmp; tmp="$(mktemp -d)" || die "no temp dir"
+  tar tzf "$in" 2>/dev/null | grep -vxE 'settings\.json|binds\.conf' | grep -q . && { rm -rf "$tmp"; die "the archive holds files other than settings.json and binds.conf; refusing"; }
+  tar xzf "$in" -C "$tmp" settings.json binds.conf 2>/dev/null
+  # validate every setting through the same rules as `set`
+  if [ -f "$tmp/settings.json" ]; then
+    local line k v lit bad=0 newovr=()
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in "{"|"}"|"") continue ;; esac
+      if [[ "$line" =~ ^[[:space:]]*\"([A-Za-z.]+)\":[[:space:]]*(.*[^,[:space:]])[,]?[[:space:]]*$ ]]; then
+        k="${BASH_REMATCH[1]}"; v="${BASH_REMATCH[2]}"
+        if [ -z "$(row "$k")" ]; then echo "skipped unknown setting: $k" >&2; continue; fi
+        case "$(field "$(row "$k")" 3)" in
+          list) v="${v#[}"; v="${v%]}"; v="${v//\"/}"; lit="$(norm_value "$k" "$v" 2>/dev/null)" ;;
+          *) lit="$(norm_value "$k" "$(plain "$v")" 2>/dev/null)" ;;
+        esac || lit=""
+        if [ -z "$lit" ]; then echo "skipped invalid value for $k" >&2; bad=1; else newovr+=("$k=$lit"); fi
+      else echo "skipped an unreadable line" >&2; bad=1; fi
+    done < "$tmp/settings.json"
+    load_ovr; OVR=(); OVR_BAD=0
+    local kv; for kv in "${newovr[@]:-}"; do [ -n "$kv" ] || continue; k="${kv%%=*}"; lit="${kv#*=}"; [ "$lit" = "$(default_lit "$k")" ] || OVR["$k"]="$lit"; done
+    save_ovr
+  fi
+  if [ -f "$tmp/binds.conf" ]; then
+    load_bov; BOV=()
+    local line d n
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line%$'\r'}"
+      if [[ "$line" =~ ^(.+)\ =\>\ (.+)$ ]]; then
+        d="${BASH_REMATCH[1]}"; n="${BASH_REMATCH[2]}"
+        if { [ "$n" = "-" ] || valid_chord "$n"; } && default_binds | cut -f1 | grep -qxF -- "$d"; then BOV["$d"]="$n"; else echo "skipped bind line: $line" >&2; fi
+      fi
+    done < "$tmp/binds.conf"
+    save_bov
+  fi
+  rm -rf "$tmp"; echo "Imported from $in (previous files kept as *.bak)."
+}
+
+cmd_path() {
+  printf 'settings   %s\nbinds      %s\nlauncher   %s\nbinds-lua  %s\n' "$SETTINGS" "$BINDS_CONF" "$LAUNCHER" "$BINDS_LUA"
+}
+
+case "${1:-}" in
+  schema)  shift; cmd_schema "$@" ;;
+  list)    shift; cmd_list "$@" ;;
+  get)     shift; cmd_get "$@" ;;
+  set)     shift; cmd_set "$@" ;;
+  reset)   shift; cmd_reset "$@" ;;
+  fav)     shift; cmd_fav "$@" ;;
+  recent)  shift; cmd_recent "$@" ;;
+  binds)   shift; cmd_binds "$@" ;;
+  export)  shift; cmd_export "$@" ;;
+  import)  shift; cmd_import "$@" ;;
+  path)    cmd_path ;;
+  *)       sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; [ -z "${1:-}" ] || exit 1 ;;
+esac

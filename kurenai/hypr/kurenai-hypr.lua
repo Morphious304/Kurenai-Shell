@@ -1,0 +1,5 @@
+-- ~/.config/hypr/kurenai-hypr.lua
+-- PLACEHOLDER: nothing is set here yet, so loading it changes nothing.
+-- `kurenai-hypr apply` (or Settings > Display and input) rewrites this whole file with your monitor and input
+-- choices, then asks you to confirm them (it reverts by itself after 15 seconds if you do not).
+-- It is loaded by the one marked line in hyprland.lua (kurenai-ctl enable-hypr / disable-hypr).

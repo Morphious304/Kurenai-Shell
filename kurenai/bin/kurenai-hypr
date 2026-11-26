@@ -1,0 +1,255 @@
+#!/usr/bin/env bash
+# kurenai-hypr: monitors and input for Hyprland, with a safety net. Behind the "Display and input" page of the KURENAI settings
+# window, and usable from any terminal.
+#
+#   show [--json]                      what is saved (nothing is applied by this)
+#   monitors [--json]                  what Hyprland reports right now (hyprctl monitors -j)
+#   monitor NAME KEY VALUE             stage one monitor setting.  KEY: mode position scale transform vrr disabled mirror
+#   monitor NAME reset                 forget every saved setting of that monitor
+#   input KEY VALUE | input reset KEY  stage an input setting (keyboard layout, repeat rate, pointer, touchpad)
+#   apply [--timeout N]                write ~/.config/hypr/kurenai-hypr.lua, reload Hyprland, and start a revert timer (default 15 s)
+#   confirm                            keep what is on screen now (cancels the timer)
+#   revert                             go back to the last confirmed settings now
+#   status                             is a trial running, is the hook active
+#   reset --all                        forget all saved monitor and input settings (then apply)
+#
+# WHY the timer: a wrong monitor rule can leave you with a black screen. `apply` always starts a timer; unless you run
+# `confirm` (the window shows a button) the previous, confirmed settings come back by themselves. The timer is its own
+# background process, so it works even if the window or your terminal is gone.
+#
+# Writes only: ~/.config/kurenai/hypr.conf (what you chose), ~/.config/kurenai/hypr.applied (last confirmed copy),
+# ~/.config/hypr/kurenai-hypr.lua (GENERATED), and, once, the marked hook line in hyprland.lua via `kurenai-ctl enable-hypr`
+# (which makes a backup first). Hyprland's own monitor lines in your hyprland.lua are not touched; this file is loaded last and
+# "multiple hl.monitor calls are cumulative", so a monitor you set here wins over an earlier rule for the same output.
+set -u
+
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
+CONF_DIR="$CFG/kurenai"
+STAGED="$CONF_DIR/hypr.conf"
+APPLIED="$CONF_DIR/hypr.applied"
+HYPR_DIR="$CFG/hypr"
+LUA="$HYPR_DIR/kurenai-hypr.lua"
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+PENDING="$RUN/kurenai-hypr.pending"
+MARK="KURENAI-HYPR-HOOK"
+
+die()  { printf 'kurenai-hypr: %s\n' "$*" >&2; exit 1; }
+have() { command -v "$1" >/dev/null 2>&1; }
+ctl()  { local here; here="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+         if [ -x "$here/kurenai-ctl" ]; then "$here/kurenai-ctl" "$@"; else "$HOME/.local/bin/kurenai-ctl" "$@"; fi; }
+hook_active() { [ -f "$HYPR_DIR/hyprland.lua" ] && grep -F -- "$MARK" "$HYPR_DIR/hyprland.lua" | grep -qv '^[[:space:]]*--'; }
+reload() { have hyprctl && hyprctl reload >/dev/null 2>&1; }
+
+# ---------------------------------------------------------------- the staged file: key=value lines
+#   monitor.NAME.KEY=VALUE        input.KEY=VALUE        input.touchpad.KEY=VALUE
+declare -A CONF=()
+load() { CONF=(); local f="${1:-$STAGED}" line k v
+  [ -f "$f" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^([A-Za-z0-9_.:-]+)=(.*)$ ]] && CONF["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+  done < "$f"; }
+save() { local f="${1:-$STAGED}" tmp k; mkdir -p "$(dirname "$f")"; tmp="$(mktemp)"
+  { printf '%s\n' "${!CONF[@]}" | LC_ALL=C sort | while IFS= read -r k; do [ -n "$k" ] && printf '%s=%s\n' "$k" "${CONF[$k]}"; done; } > "$tmp"
+  cat "$tmp" > "$f"; rm -f "$tmp"; }
+
+# ---------------------------------------------------------------- validation
+num_in() { awk -v v="$1" -v lo="$2" -v hi="$3" 'BEGIN{ exit !(v ~ /^-?[0-9]+(\.[0-9]+)?$/ && v+0>=lo && v+0<=hi) }'; }
+check_monitor_value() {   # KEY VALUE -> 0 ok
+  local k="$1" v="$2"
+  case "$k" in
+    mode)      [[ "$v" =~ ^(preferred|highres|highrr|maxwidth|[0-9]{3,5}x[0-9]{3,5}(@[0-9]{1,3}(\.[0-9]{1,3})?)?)$ ]] ;;
+    position)  [[ "$v" =~ ^(auto|-?[0-9]{1,5}x-?[0-9]{1,5})$ ]] ;;
+    scale)     [ "$v" = auto ] || num_in "$v" 0.25 4 ;;
+    transform) [[ "$v" =~ ^[0-7]$ ]] ;;
+    vrr)       [[ "$v" =~ ^[0-3]$ ]] ;;
+    disabled)  [ "$v" = true ] || [ "$v" = false ] ;;
+    mirror)    [ -z "$v" ] || [[ "$v" =~ ^[A-Za-z0-9_.:-]+$ ]] ;;
+    *) return 1 ;;
+  esac
+}
+INPUT_KEYS="kb_layout kb_variant kb_options follow_mouse sensitivity repeat_rate repeat_delay accel_profile numlock_by_default"
+TOUCHPAD_KEYS="natural_scroll tap-to-click disable_while_typing"
+check_input_value() {   # KEY VALUE
+  local k="$1" v="$2"
+  case "$k" in
+    kb_layout)  [[ "$v" =~ ^[A-Za-z0-9_,-]{1,40}$ ]] ;;
+    kb_variant) [[ "$v" =~ ^[A-Za-z0-9_,()-]{0,60}$ ]] ;;
+    kb_options) [[ "$v" =~ ^[A-Za-z0-9_:,-]{0,120}$ ]] ;;
+    follow_mouse) [[ "$v" =~ ^[0-3]$ ]] ;;
+    sensitivity) num_in "$v" -1 1 ;;
+    repeat_rate)  [[ "$v" =~ ^[0-9]{1,3}$ ]] && [ "$v" -le 200 ] ;;
+    repeat_delay) [[ "$v" =~ ^[0-9]{1,4}$ ]] && [ "$v" -le 2000 ] ;;
+    accel_profile) [ -z "$v" ] || [ "$v" = adaptive ] || [ "$v" = flat ] ;;
+    numlock_by_default|touchpad.natural_scroll|touchpad.tap-to-click|touchpad.disable_while_typing) [ "$v" = true ] || [ "$v" = false ] ;;
+    *) return 1 ;;
+  esac
+}
+norm_bool() { case "$(printf '%s' "$1" | tr 'A-Z' 'a-z')" in true|on|yes|1) echo true ;; false|off|no|0) echo false ;; *) echo "$1" ;; esac; }
+
+# ---------------------------------------------------------------- generate the Lua module from a conf (global CONF)
+lq() { printf '"%s"' "$1"; }    # values are charset-validated: no quotes or backslashes can be here
+gen_lua() {
+  local k name key v mons m
+  echo "-- ~/.config/hypr/kurenai-hypr.lua"
+  echo "-- GENERATED by kurenai-hypr from ~/.config/kurenai/hypr.conf: it is rewritten on every apply, do not edit it by hand."
+  echo "-- Loaded by the one marked line in hyprland.lua (kurenai-ctl enable-hypr / disable-hypr)."
+  echo "local function try(name, fn)"
+  echo "  local ok, err = pcall(fn)"
+  echo "  if not ok then print(\"[kurenai] hypr setting '\" .. name .. \"' failed: \" .. tostring(err)) end"
+  echo "end"
+  mons="$(for k in "${!CONF[@]}"; do case "$k" in monitor.*) n="${k#monitor.}"; echo "${n%.*}" ;; esac; done | LC_ALL=C sort -u)"
+  while IFS= read -r m; do
+    [ -n "$m" ] || continue
+    local parts=""
+    for key in mode position scale transform vrr disabled mirror; do
+      v="${CONF[monitor.$m.$key]-}"; [ -n "${CONF[monitor.$m.$key]+x}" ] || continue
+      [ -n "$v" ] || [ "$key" = mirror ] || continue
+      case "$key" in
+        mode|position|mirror) parts="$parts $key = $(lq "$v")," ;;
+        scale) if [ "$v" = auto ]; then parts="$parts scale = \"auto\","; else parts="$parts scale = $v,"; fi ;;
+        transform|vrr) parts="$parts $key = $v," ;;
+        disabled) parts="$parts disabled = $v," ;;
+      esac
+    done
+    [ -n "$parts" ] && echo "try(\"monitor $m\", function() hl.monitor({ output = $(lq "$m"),$parts }) end)"
+  done <<< "$mons"
+  for key in $INPUT_KEYS; do
+    [ -n "${CONF[input.$key]+x}" ] || continue
+    v="${CONF[input.$key]}"
+    case "$key" in
+      kb_layout|kb_variant|kb_options|accel_profile) echo "try(\"input $key\", function() hl.config({ input = { $key = $(lq "$v") } }) end)" ;;
+      *) echo "try(\"input $key\", function() hl.config({ input = { $key = $v } }) end)" ;;
+    esac
+  done
+  for key in $TOUCHPAD_KEYS; do
+    [ -n "${CONF[input.touchpad.$key]+x}" ] || continue
+    v="${CONF[input.touchpad.$key]}"
+    case "$key" in
+      tap-to-click) echo "try(\"touchpad $key\", function() hl.config({ input = { touchpad = { [\"tap-to-click\"] = $v } } }) end)" ;;
+      *) echo "try(\"touchpad $key\", function() hl.config({ input = { touchpad = { $key = $v } } }) end)" ;;
+    esac
+  done
+}
+write_lua() { local tmp; mkdir -p "$HYPR_DIR"; tmp="$(mktemp)"; gen_lua > "$tmp"; cat "$tmp" > "$LUA"; rm -f "$tmp"; }
+
+# ---------------------------------------------------------------- commands
+cmd_show() {
+  load
+  if [ "${1:-}" = "--json" ]; then
+    local first=1 k
+    printf '{\n'
+    printf '%s\n' "${!CONF[@]}" | LC_ALL=C sort | while IFS= read -r k; do
+      [ -n "$k" ] || continue
+      printf '  "%s": "%s",\n' "$k" "${CONF[$k]}"
+    done | sed '$ s/,$//'
+    printf '}\n'
+  else
+    printf '%s\n' "${!CONF[@]}" | LC_ALL=C sort | while IFS= read -r k; do [ -n "$k" ] && printf '%s = %s\n' "$k" "${CONF[$k]}"; done
+    [ "${#CONF[@]}" -gt 0 ] || echo "(nothing saved: Hyprland's own monitor and input settings are in charge)"
+  fi
+}
+cmd_monitors() {
+  have hyprctl || die "hyprctl not found (is Hyprland running in this session?)"
+  if [ "${1:-}" = "--json" ]; then hyprctl monitors -j 2>/dev/null || die "hyprctl monitors failed"
+  else hyprctl monitors 2>/dev/null || die "hyprctl monitors failed"; fi
+}
+cmd_monitor() {
+  local name="${1:-}" key="${2:-}" val="${3-}"
+  [[ "$name" =~ ^[A-Za-z0-9_.:-]+$ ]] || die "usage: kurenai-hypr monitor NAME KEY VALUE   (NAME like eDP-1, see: kurenai-hypr monitors)"
+  load
+  if [ "$key" = reset ]; then
+    local k; for k in "${!CONF[@]}"; do case "$k" in "monitor.$name."*) unset 'CONF[$k]' ;; esac; done
+    save; echo "$name: saved settings forgotten (run: kurenai-hypr apply)"; return 0
+  fi
+  [ "$key" = disabled ] && val="$(norm_bool "$val")"
+  check_monitor_value "$key" "$val" || die "invalid $key for a monitor: '$val'   (mode WxH@R|preferred, position XxY|auto, scale 0.25-4|auto, transform 0-7, vrr 0-3, disabled true|false, mirror NAME)"
+  if [ "$key" = disabled ] && [ "$val" = true ]; then
+    # refuse to leave the machine with no screen at all
+    local other=""
+    have hyprctl && other="$(hyprctl monitors -j 2>/dev/null | grep -o '"name": *"[^"]*"' | sed 's/.*: *"//;s/"$//' | grep -vxF -- "$name" | head -1)"
+    [ -n "$other" ] || die "refusing to disable $name: I can not see another active monitor (the revert timer would save you, but not this way)"
+  fi
+  CONF["monitor.$name.$key"]="$val"; save
+  echo "$name $key = $val   (staged: run kurenai-hypr apply)"
+}
+cmd_input() {
+  local key="${1:-}" val="${2-}"
+  load
+  if [ "$key" = reset ]; then
+    key="${2:-}"; [ -n "$key" ] || die "usage: kurenai-hypr input reset KEY"
+    case "$key" in touchpad.*|touchpad:*) key="touchpad.${key#touchpad[.:]}" ;; esac
+    unset "CONF[input.$key]"; save; echo "input.$key forgotten (run: kurenai-hypr apply)"; return 0
+  fi
+  case "$key" in touchpad:*) key="touchpad.${key#touchpad:}" ;; esac
+  case "$key" in numlock_by_default|touchpad.*) val="$(norm_bool "$val")" ;; esac
+  [ -n "$key" ] || die "usage: kurenai-hypr input KEY VALUE   (keys: $INPUT_KEYS touchpad.natural_scroll touchpad.tap-to-click touchpad.disable_while_typing)"
+  check_input_value "$key" "$val" || die "unknown key or invalid value for input.$key: '$val'"
+  CONF["input.$key"]="$val"; save
+  echo "input.$key = $val   (staged: run kurenai-hypr apply)"
+}
+notify() { have notify-send && notify-send -a KURENAI "$1" "${2:-}" >/dev/null 2>&1; true; }
+cmd_apply() {
+  local timeout=15
+  [ "${1:-}" = "--timeout" ] && { timeout="${2:-15}"; [[ "$timeout" =~ ^[0-9]+$ ]] && [ "$timeout" -ge 5 ] && [ "$timeout" -le 120 ] || die "--timeout must be 5..120 seconds"; }
+  [ ! -e "$PENDING" ] || die "a trial is already running: run 'kurenai-hypr confirm' or 'kurenai-hypr revert' first"
+  have hyprctl || die "hyprctl not found: apply needs a running Hyprland"
+  if ! hook_active; then
+    [ -f "$LUA" ] || { load /dev/null; write_lua; }
+    echo "Enabling the one hook line in hyprland.lua (a backup is made first)..."
+    ctl enable-hypr >/dev/null || die "could not enable the hook; run: kurenai-ctl enable-hypr"
+    hook_active || die "the hook line is not in hyprland.lua; stopping before changing anything"
+  fi
+  load; write_lua
+  # the timer is a separate session: it outlives this process
+  local token; token="$(date +%s%N)-$$"
+  printf '%s\n' "$token" > "$PENDING"
+  setsid bash "$0" __watchdog "$timeout" "$token" >/dev/null 2>&1 < /dev/null &
+  reload
+  echo "Applied. If the screen looks right, CONFIRM within $timeout seconds: kurenai-hypr confirm"
+  echo "Otherwise the previous settings come back by themselves."
+}
+cmd_watchdog() {
+  sleep "${1:-15}"
+  # only act on OUR trial: a later apply writes a different token and has its own timer
+  [ -e "$PENDING" ] && [ "$(cat "$PENDING" 2>/dev/null)" = "${2:-}" ] || exit 0
+  restore_applied
+  rm -f "$PENDING"
+  notify "KURENAI: display settings reverted" "No confirmation arrived, so the previous settings are back."
+}
+restore_applied() { load "$APPLIED"; write_lua; reload; }
+cmd_confirm() {
+  [ -e "$PENDING" ] || { echo "No trial is running; nothing to confirm."; return 0; }
+  rm -f "$PENDING"
+  load; save "$APPLIED"
+  echo "Confirmed: these settings are kept."
+}
+cmd_revert() {
+  [ -e "$PENDING" ] && rm -f "$PENDING"
+  restore_applied
+  echo "Reverted to the last confirmed settings."
+}
+cmd_status() {
+  printf 'hook active:  %s\n' "$(hook_active && echo yes || echo no)"
+  if [ -e "$PENDING" ]; then echo "trial:        running (confirm or revert)"; else echo "trial:        none"; fi
+  printf 'saved keys:   %s\n' "$(load; echo "${#CONF[@]}")"
+  printf 'confirmed:    %s\n' "$([ -f "$APPLIED" ] && echo yes || echo 'never')"
+}
+cmd_reset() {
+  [ "${1:-}" = "--all" ] || die "usage: kurenai-hypr reset --all"
+  CONF=(); save; echo "All saved monitor and input settings forgotten. Run: kurenai-hypr apply"
+}
+
+case "${1:-}" in
+  show)       shift; cmd_show "$@" ;;
+  monitors)   shift; cmd_monitors "$@" ;;
+  monitor)    shift; cmd_monitor "$@" ;;
+  input)      shift; cmd_input "$@" ;;
+  apply)      shift; cmd_apply "$@" ;;
+  confirm)    cmd_confirm ;;
+  revert)     cmd_revert ;;
+  status)     cmd_status ;;
+  reset)      shift; cmd_reset "$@" ;;
+  __watchdog) shift; cmd_watchdog "$@" ;;
+  *)          sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; [ -z "${1:-}" ] || exit 1 ;;
+esac

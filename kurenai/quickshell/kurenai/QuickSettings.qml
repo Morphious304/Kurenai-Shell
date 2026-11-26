@@ -577,12 +577,23 @@ PanelOverlay {
                     }
                 }
 
-                Row {       // app colours (kitty, gtk, qt, ...): only when at least one is attached with kurenai-ctl
-                    visible: ThemeCtl.available && ThemeCtl.extras !== ""
+                Row {       // Settings (always) and app colours (kitty, gtk, qt, ...: only when one is attached with kurenai-ctl)
+                    id: moreTiles
                     width: parent.width
                     spacing: Theme.s2
+                    readonly property real tileW: (width - spacing * 2) / 3
                     Btn {
-                        width: themeTiles.tileW
+                        width: moreTiles.tileW
+                        height: 64
+                        stacked: true
+                        icon: Theme.icons.cog
+                        text: "Settings"
+                        subtext: "Open the window"
+                        onClicked: { System.openSettings(); UiState.quickSettingsOpen = false; }
+                    }
+                    Btn {
+                        visible: ThemeCtl.available && ThemeCtl.extras !== ""
+                        width: moreTiles.tileW
                         height: 64
                         stacked: true
                         icon: Theme.icons.image

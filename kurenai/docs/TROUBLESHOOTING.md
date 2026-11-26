@@ -21,7 +21,7 @@ owns the notification service. Logs: `kurenai-ctl logs` (the running shell), `ku
 
 | Symptom | Fix |
 |---|---|
-| Popups never appear | `kurenai-ctl notif-status` shows who owns the service. If mako, dunst or swaync is running: `kurenai-ctl notif-takeover`, then `kurenai-ctl start` |
+| Popups never appear | run `kurenai-ctl notif-test`: it sends three test notifications and says who owns the service. If the notification centre (`SUPER+N`) shows an amber box, or mako, dunst or swaync owns it: click "Show notifications here instead", or `kurenai-ctl notif-takeover && kurenai-ctl restart`. D-Bus can start the old daemon again by itself at login (`notif-status` lists the auto-start files) |
 | The old daemon comes back after a reboot | it is still started by your session: comment out its autostart (`notif-status` shows where) |
 | You want the old daemon back | `kurenai-ctl notif-restore` |
 | Testing | `notify-send 'KURENAI' 'hello'` (package `libnotify`) |
@@ -76,6 +76,18 @@ The short version: if the screen is stuck, press `Ctrl+Alt+F3`, log in, run `kur
 | `kurenai-ctl lock-preview` | the lock screen in a normal window with the real password check; locks nothing |
 
 Last resort, ends your session and loses unsaved work: `pkill -x Hyprland`.
+
+## KURENAI Settings
+- Rofi: "Failed to execute: 'kurenai-settings' ... No such file or directory" -> the application entry had a relative `Exec=`. Run `kurenai-ctl desktop-entry install` (check first with `kurenai-ctl desktop-entry status`). A terminal always works: `~/.local/bin/kurenai-settings`.
+- `enable-hypr`: "kurenai-hypr.lua is not installed" -> fixed (a placeholder is created); with an older `kurenai-ctl` just run `kurenai-hypr apply`, which writes the file.
+
+- **Nothing happens when I open it:** `kurenai-settings --debug` shows the Quickshell error. If it says `qs` is missing, install Quickshell. If it says the config is missing, run `install.sh` again.
+- **A page says "could not be loaded":** run `kurenai-settings --debug` and send the first error line.
+- **A control does nothing / the box jumps back:** the command was refused. Open the Output drawer (Ctrl+J): the message from `kurenai-conf` / `kurenai-ctl` is there, with the exact command.
+- **Display went wrong:** do nothing for 15 seconds; the last confirmed settings come back. From a TTY: `kurenai-hypr revert`, or `kurenai-hypr reset --all` then `hyprctl reload`.
+- **A remapped key does nothing:** is the binds hook on (Keybinds page)? Is your `kurenai-binds.lua` the new one (it mentions `binds.conf`)? `kurenai-ctl binds-check` shows clashes.
+- **The theme of the window differs from the shell:** `kurenai-ctl lock-sync-theme` copies the main `Theme.qml` to the lock screen and the settings window.
+- **Icons are empty boxes:** install the "JetBrainsMono Nerd Font" (the shell uses it too).
 
 ## Still stuck
 

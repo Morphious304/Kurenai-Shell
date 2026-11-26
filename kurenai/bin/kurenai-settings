@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# kurenai-settings: opens the KURENAI Settings window (its own Quickshell config, "kurenai-settings").
+# It does not need the KURENAI shell to be running. Everything it does goes through kurenai-ctl / kurenai-conf / kurenai-hypr / kurenai-clip.
+#   kurenai-settings            open the window (if one is already open, nothing new starts and the old one is focused when Hyprland allows)
+#   kurenai-settings --debug    run in this terminal with the live log (to see QML errors)
+set -u
+
+msg() { printf 'kurenai-settings: %s\n' "$*" >&2; command -v notify-send >/dev/null 2>&1 && notify-send -a "KURENAI Settings" "KURENAI Settings" "$*" 2>/dev/null; return 0; }
+
+command -v qs >/dev/null 2>&1 || { msg "Quickshell (qs) is not installed or not on PATH. Install it first: sudo pacman -S quickshell  (or your AUR package)."; exit 1; }
+
+CFG="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/kurenai-settings"
+[ -f "$CFG/shell.qml" ] || { msg "the settings window is not installed ($CFG/shell.qml is missing). Run install.sh from the KURENAI folder again."; exit 1; }
+
+if [ "${1:-}" = "--debug" ]; then exec qs -c kurenai-settings; fi
+
+if qs -c kurenai-settings -n -d >/dev/null 2>&1; then exit 0; fi   # started (or one was already running)
+# a copy is already running: try to bring its window forward (best effort; Hyprland only)
+command -v hyprctl >/dev/null 2>&1 && hyprctl dispatch focuswindow "title:^KURENAI Settings$" >/dev/null 2>&1
+exit 0

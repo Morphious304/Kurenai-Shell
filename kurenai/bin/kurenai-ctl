@@ -20,6 +20,9 @@ HOOK_BINDS='local ok_b, err_b = pcall(require, "kurenai-binds"); if not ok_b the
 MARK_AUTO="KURENAI-AUTOSTART-HOOK"
 HOOK_AUTO='local ok_a, err_a = pcall(require, "kurenai-autostart"); if not ok_a then print("[kurenai] " .. tostring(err_a)) end -- KURENAI-AUTOSTART-HOOK'
 
+MARK_HYPR="KURENAI-HYPR-HOOK"
+HOOK_HYPR='local ok_h, err_h = pcall(require, "kurenai-hypr"); if not ok_h then print("[kurenai] " .. tostring(err_h)) end -- KURENAI-HYPR-HOOK'
+
 MARK_LOCK="KURENAI-LOCK-HOOK"
 HOOK_LOCK='local ok_l, err_l = pcall(require, "kurenai-lock"); if not ok_l then print("[kurenai] " .. tostring(err_l)) end -- KURENAI-LOCK-HOOK'
 
@@ -63,6 +66,7 @@ Usage: kurenai-ctl <command>
 
  Setup
   backup             copy ~/.config/hypr and ~/.config/quickshell into $BACKUPS/<timestamp>
+  backups [--json]   read-only: list those backups, newest first
   validate           read-only health check (versions, services, fonts, files, conflicts)
   enable             theme: add ONE marked line to hyprland.lua (borders, gaps, motion)
   disable            theme: remove that line
@@ -71,6 +75,15 @@ Usage: kurenai-ctl <command>
   disable-binds      keybinds: remove that line
   enable-autostart   start the shell with the session: add ONE marked line
   disable-autostart  remove that line
+
+ Settings window and the settings store
+  settings           open the KURENAI settings window (also in Rofi and the launcher: "KURENAI Settings"); works with the shell stopped
+  conf <cmd>         the settings store (kurenai-conf): schema list get set reset | fav ... | recent ... | binds ... | export import path
+  hypr <cmd>         monitors and input with a revert timer (kurenai-hypr): show monitors monitor input apply confirm revert status reset
+  desktop-entry [status|install|remove]   the "KURENAI Settings" entry Rofi lists: install rewrites it with the ABSOLUTE program path (fixes "Failed to execute: 'kurenai-settings'")
+  enable-hypr        load the generated monitor/input module: add ONE marked line (creates a harmless placeholder module if kurenai-hypr apply has not run yet)
+  disable-hypr       remove that line
+  status [--json]    one machine-readable report: shell, lock, hooks, colours, tools (the settings window reads this)
 
  Shortcuts page
   shortcuts [cmd]    status (default) | toggle | rescan : talk to the running shell's shortcuts page (what it read, from which files)
@@ -104,6 +117,7 @@ Usage: kurenai-ctl <command>
 
  Notifications (only one program may own org.freedesktop.Notifications)
   notif-status       who owns it right now, and where mako/dunst/swaync are started
+  notif-test         send a low, a normal and a critical test notification and say who owns the service (nothing pops up? run this)
   notif-takeover     stop the running notification daemon so KURENAI can own the service
   notif-restore      stop the KURENAI shell and bring the previous daemon back
 
@@ -119,9 +133,10 @@ Usage: kurenai-ctl <command>
   theme contrast N   -1 .. 1 (0 = standard)         theme accent wallpaper|vermilion   (vermilion = only neutrals follow)
   theme hypr on|off  Hyprland borders follow too     theme rofi on|off   Rofi theme follows too
   theme reset        built-in colours everywhere and forget the theme settings
-  theme extras       app colours (kitty gtk qt btop yazi zathura nvim spicetify firefox): state; also: extras apply|follow on|off|reset
+  theme extras       app colours (kitty gtk qt btop yazi zathura nvim spicetify pacsea lazygit firefox): state; also: extras apply|follow on|off|reset
   theme extra <name> on|off   attach / detach one app (on = one-time setup in that app's config after a backup, then colours)
   theme-apply [--auto] <image>   recolour from a specific image (the Walls tab calls this)
+  wallpaper current|list [--json]|set <image>   what awww shows / the images in your wallpaper folders / set one (then recolour if wallpaper colours are on)
 
  Undo
   rollback           stop shell, restore the old notifier, remove ALL hooks, move KURENAI files aside
@@ -130,6 +145,22 @@ USAGE
 }
 
 # ------------------------------------------------------------------ backup / hooks
+cmd_backups() {   # kurenai-ctl backups [--json] : read-only list of what `backup` made, newest first
+  local d n first=1 latest=""
+  [ -L "$BACKUPS/latest" ] && latest="$(basename "$(readlink "$BACKUPS/latest")")"
+  if [ "${1:-}" = "--json" ]; then
+    printf '['
+    for d in $(ls -1d "$BACKUPS"/[0-9]* 2>/dev/null | sort -r); do
+      n="$(basename "$d")"; [ "$first" = 1 ] || printf ', '; first=0
+      printf '{"name": "%s", "latest": %s, "hypr": %s, "quickshell": %s}' "$n" "$([ "$n" = "$latest" ] && echo true || echo false)" \
+        "$([ -d "$d/hypr" ] && echo true || echo false)" "$([ -d "$d/quickshell" ] && echo true || echo false)"
+    done
+    printf ']\n'; return 0
+  fi
+  echo "backups in $BACKUPS (newest first):"
+  for d in $(ls -1d "$BACKUPS"/[0-9]* 2>/dev/null | sort -r); do n="$(basename "$d")"; echo "  $n$([ "$n" = "$latest" ] && echo '   <- latest (restore uses this one)')"; done
+}
+
 cmd_backup() {
   local dir; dir="$BACKUPS/$(stamp)"
   mkdir -p "$dir" || die "cannot create $dir"
@@ -139,10 +170,27 @@ cmd_backup() {
   echo "Backup written to $dir"
 }
 
+# The display/input module is GENERATED by `kurenai-hypr apply`, so before the first apply it does not exist yet.
+# Loading a missing module only prints an error, but enabling the hook should not need a prior apply: write a
+# comment-only placeholder (changes nothing) instead. Never overwrites an existing file.
+HYPR_STUB='-- ~/.config/hypr/kurenai-hypr.lua
+-- PLACEHOLDER: nothing is set here yet, so loading it changes nothing.
+-- `kurenai-hypr apply` (or Settings > Display and input) rewrites this whole file with your monitor and input
+-- choices, then asks you to confirm them (it reverts by itself after 15 seconds if you do not).
+-- It is loaded by the one marked line in hyprland.lua (kurenai-ctl enable-hypr / disable-hypr).'
+ensure_hypr_stub() {
+  local f="$HYPR_DIR/kurenai-hypr.lua"
+  [ -e "$f" ] && return 0
+  mkdir -p "$HYPR_DIR" || die "cannot create $HYPR_DIR"
+  printf '%s\n' "$HYPR_STUB" > "$f" || die "cannot write $f"
+  echo "hypr: created the placeholder $f (it sets nothing until you run: kurenai-hypr apply)"
+}
+
 hook_add() {  # name mark line module-file
   local name="$1" mark="$2" line="$3" module="$4"
   local f="$HYPR_DIR/hyprland.lua"
   [ -f "$f" ] || die "$f not found (this setup targets the Lua config)"
+  [ "$module" = "kurenai-hypr.lua" ] && ensure_hypr_stub
   [ -f "$HYPR_DIR/$module" ] || die "$module is not installed; run install.sh first"
   if grep -qF "$mark" "$f"; then echo "$name: already enabled."; return 0; fi
   cmd_backup >/dev/null || die "backup failed; not touching hyprland.lua"
@@ -171,6 +219,8 @@ cmd_enable()            { hook_add    "theme"     "$MARK_THEME" "$HOOK_THEME" "k
 cmd_disable()           { hook_remove "theme"     "$MARK_THEME"; }
 cmd_enable_binds()      { hook_add    "binds"     "$MARK_BINDS" "$HOOK_BINDS" "kurenai-binds.lua"; }
 cmd_disable_binds()     { hook_remove "binds"     "$MARK_BINDS"; }
+cmd_enable_hypr()       { hook_add    "hypr"      "$MARK_HYPR"  "$HOOK_HYPR"  "kurenai-hypr.lua"; }
+cmd_disable_hypr()      { hook_remove "hypr"      "$MARK_HYPR"; }
 cmd_enable_autostart()  { hook_add    "autostart" "$MARK_AUTO"  "$HOOK_AUTO"  "kurenai-autostart.lua"; }
 cmd_disable_autostart() { hook_remove "autostart" "$MARK_AUTO"; }
 
@@ -243,10 +293,31 @@ cmd_notif_status() {
     pgrep -x "$n" >/dev/null && echo "  running: $n"
     systemctl --user is-active --quiet "$n" 2>/dev/null && echo "  user unit active: $n"
   done
+  # D-Bus can start a notification daemon BY ITSELF the moment any program sends a notification while nobody owns the
+  # service (for example at login, before the shell is up). That daemon then keeps the service until it is stopped.
+  local d; d="$(grep -lE '^Name=org\.freedesktop\.Notifications' /usr/share/dbus-1/services/*.service "${XDG_DATA_HOME:-$HOME/.local/share}"/dbus-1/services/*.service 2>/dev/null | head -n 3)"
+  [ -n "$d" ] && printf '%s\n' "$d" | while IFS= read -r f; do echo "  D-Bus can auto-start it via: $f ($(sed -n 's/^Exec=//p' "$f" | head -n 1))"; done
   echo "Where these daemons might be started from (edit/comment these out yourself; kurenai-ctl will not):"
   grep -nE 'mako|dunst|swaync' "$HYPR_DIR"/*.lua 2>/dev/null | sed 's/^/  /' || true
   [ -d "$CFG/systemd/user" ] && grep -rlE 'mako|dunst|swaync' "$CFG/systemd/user" 2>/dev/null | sed 's/^/  unit file: /'
   return 0
+}
+
+# Sends three test notifications (low, normal, critical) and says who owns the service, so "nothing pops up" has an answer.
+cmd_notif_test() {
+  have notify-send || die "notify-send not found (package: libnotify)"
+  local o; o="$(notif_owner)"
+  if [ -n "$o" ]; then echo "org.freedesktop.Notifications is owned by: $o"
+  else echo "org.freedesktop.Notifications: owner unknown (busctl missing, or nobody owns it)"; fi
+  case "$o" in
+    *quickshell*|*qs) echo "-> that is the KURENAI shell: three popups should appear top-right now." ;;
+    "") echo "-> nobody owns it: start the shell (kurenai-ctl start); popups appear once it runs." ;;
+    *) echo "-> another program owns it, so KURENAI cannot show popups. Fix: kurenai-ctl notif-takeover && kurenai-ctl restart" ;;
+  esac
+  notify-send -a "KURENAI test" -u low      "Low urgency" "Short timeout, no accent bar."
+  notify-send -a "KURENAI test" -u normal   "Normal urgency" "This one uses the teal edge."
+  notify-send -a "KURENAI test" -u critical "Critical" "Stays until you close it."
+  echo "Sent. Critical notifications never time out: dismiss that one in the centre (SUPER+N) or with its x."
 }
 
 cmd_notif_takeover() {
@@ -263,10 +334,16 @@ cmd_notif_takeover() {
       found="$n"; break
     fi
   done
-  [ -z "$found" ] && echo "No mako/dunst/swaync was running. Nothing to stop."
+  if [ -z "$found" ]; then
+    local o; o="$(notif_owner)"
+    case "$o" in
+      ""|*quickshell*|*qs) echo "No mako/dunst/swaync was running. Nothing to stop." ;;
+      *) echo "The service is owned by '${o#* }', which kurenai-ctl does not know how to stop. Stop it yourself, then: kurenai-ctl restart" ;;
+    esac
+  fi
   [ -n "$found" ] && echo "Remembered in $PREV_NOTIFIER; undo with: kurenai-ctl notif-restore"
   echo "Next: start the shell (kurenai-ctl start), then test:  notify-send 'KURENAI' 'hello'"
-  echo "Also comment out any autostart of $found in your Hyprland config (see: kurenai-ctl notif-status)."
+  [ -n "$found" ] && echo "Also comment out any autostart of $found in your Hyprland config (see: kurenai-ctl notif-status)."
   return 0
 }
 
@@ -451,6 +528,48 @@ theme_current_wallpaper() {
   awww query -j 2>/dev/null | grep -o '"image": *"[^"]*"' | head -n 1 | sed 's/^"image": *"//; s/"$//'
 }
 
+# ------------------------------------------------------------------ wallpapers (the settings window's picker; same awww call as the Walls tab)
+wall_conf() {   # wall_conf KEY DEFAULT : effective value from the settings store, else the default
+  local c v; c="$(prog_path kurenai-conf)"
+  if [ -x "$c" ] && v="$("$c" get "$1" 2>/dev/null)" && [ -n "$v" ]; then printf '%s' "$v"; else printf '%s' "$2"; fi
+}
+wall_items() { printf '%s\n' "$1" | tr -d '[]"' | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d'; }
+cmd_wallpaper() {   # wallpaper current | list [--json] | set PATH
+  local sub="${1:-current}"; [ $# -gt 0 ] && shift
+  case "$sub" in
+    current) theme_current_wallpaper || { echo "no wallpaper reported by awww (is awww-daemon running and a wallpaper set?)" >&2; return 1; } ;;
+    list)
+      local json=0 d e dirs=() exts=() args=() f first=1 n=0
+      [ "${1:-}" = "--json" ] && json=1
+      while IFS= read -r d; do d="${d/#\~/$HOME}"; d="${d%/}"; [ -n "$d" ] && dirs+=("$d"); done < <(wall_items "$(wall_conf wallpaperDirs '["~/Pictures/Wallpapers"]')")
+      while IFS= read -r e; do case "$e" in *[!A-Za-z0-9]*|'') continue ;; esac; exts+=("$e"); done < <(wall_items "$(wall_conf wallpaperExtensions '["jpg","jpeg","png","webp","gif"]')")
+      [ "${#dirs[@]}" -gt 0 ] && [ "${#exts[@]}" -gt 0 ] || { [ "$json" = 1 ] && echo '[]'; return 0; }
+      args=("${dirs[@]}" -type f '(')
+      for e in "${exts[@]}"; do [ "${#args[@]}" -gt $(( ${#dirs[@]} + 3 )) ] && args+=(-o); args+=(-iname "*.$e"); done
+      args+=(')' -print)
+      if [ "$json" = 1 ]; then printf '['; fi
+      while IFS= read -r f; do
+        case "$f" in *[\"\\]*) continue ;; esac                          # cannot be put safely inside JSON; the shell's own Walls tab still shows it
+        [ -n "$(printf '%s' "$f" | tr -d '[:print:]')" ] && continue
+        n=$((n+1)); [ "$n" -le 600 ] || break
+        if [ "$json" = 1 ]; then [ "$first" = 1 ] || printf ', '; first=0; printf '"%s"' "$f"; else echo "$f"; fi
+      done < <(find -L "${args[@]}" 2>/dev/null | LC_ALL=C sort -f)
+      if [ "$json" = 1 ]; then printf ']\n'; fi ;;
+    set)
+      local img="${1:-}" t dur cmd
+      [ -n "$img" ] && [ -f "$img" ] || die "usage: kurenai-ctl wallpaper set <image file>"
+      have awww || die "awww is not installed, so wallpapers cannot be set"
+      t="$(wall_conf wallpaperTransition random)"
+      case "$t" in none|simple|fade|left|right|top|bottom|wipe|wave|grow|center|any|outer|random) ;; *) t=random ;; esac
+      dur="$(wall_conf wallpaperTransitionDuration 0)"
+      cmd=(awww img -t "$t"); case "$dur" in 0|0.0|'') ;; *[!0-9.]*) ;; *) cmd+=(--transition-duration "$dur") ;; esac
+      "${cmd[@]}" "$img" || die "awww could not set it (is awww-daemon running?)"
+      echo "wallpaper set: $img"
+      if theme_enabled; then cmd_theme_apply --auto "$img" && echo "colours updated from it"; fi ;;
+    *) die "usage: kurenai-ctl wallpaper current | list [--json] | set <image>" ;;
+  esac
+}
+
 cmd_theme_sync() {
   local auto=0 force=0 a
   for a in "$@"; do case "$a" in --auto) auto=1 ;; --force) force=1 ;; esac; done
@@ -549,14 +668,14 @@ theme_restore_defaults_part() {
   return 0
 }
 
-# ------------------------------------------------------------------ app colours ("extras"): kitty gtk qt btop yazi zathura nvim spicetify firefox
+# ------------------------------------------------------------------ app colours ("extras"): kitty gtk qt btop yazi zathura nvim spicetify pacsea lazygit firefox
 # Each extra is a few templates (~/.local/share/kurenai/extras/<name>/) filled from the SAME colours the shell uses
 # (palette.json, or the built-in KURENAI colours when wallpaper colours are off), so apps and shell always match.
 #   theme extra <name> on   : one-time setup (a marked block / one setting in that app's own config, after a backup), then colours
 #   theme extra <name> off  : undo that setup and delete the generated files: the app goes back to your own look
 #   theme extras            : state of all of them        theme extras reset : detach every extra
 # Generated files are only ever written to places named in the extra's MANIFEST.
-EXTRAS_ALL="kitty gtk qt btop yazi zathura nvim spicetify firefox"
+EXTRAS_ALL="kitty gtk qt btop yazi zathura nvim spicetify pacsea lazygit firefox"
 EXTRAS_DIR="$STATE/extras"
 
 extra_known()    { case " $EXTRAS_ALL " in *" $1 "*) return 0 ;; esac; return 1; }
@@ -706,6 +825,8 @@ extra_render() {   # extra_render NAME TOKENFILE
     dest="$(ex_path "$dest")"
     case "$dest" in /nonexistent-firefox-profile*) echo "extra $name: Firefox profile not found, nothing written (check: kurenai-ctl theme extra firefox status)" >&2; return 1 ;; esac
     if [ "$kind" = once ] && [ -e "$dest" ]; then continue; fi
+    # an extra can choose between its manifest lines (lazygit: managed block in config.yml, or a separate file)
+    if command -v "extra_skip_$name" >/dev/null 2>&1 && "extra_skip_$name" "$kind"; then continue; fi
     tmp="$(mktemp "$STATE/next/ex.XXXXXX")"
     if ! awk -v tokens="$tok" -f "$EXTRAS_DIR/render.awk" "$EXTRAS_DIR/$name/$tpl" > "$tmp" 2>"$tmp.err" || grep -q '{{' "$tmp" || [ ! -s "$tmp" ]; then
       echo "extra $name: could not render $tpl: $(head -n 1 "$tmp.err")" >&2; rm -f "$tmp" "$tmp.err"; return 1
@@ -714,7 +835,7 @@ extra_render() {   # extra_render NAME TOKENFILE
     command -v "extra_post_$name" >/dev/null 2>&1 && "extra_post_$name" "$tmp" "$tpl"
     mkdir -p "$(dirname "$dest")"
     case "$kind" in
-      block) before=none; [ -f "$dest" ] && before="$(cksum < "$dest")"
+      block|lgblock) before=none; [ -f "$dest" ] && before="$(cksum < "$dest")"
              ex_block_put "$dest" "$style" "$tmp"; after="$(cksum < "$dest")"
              [ "$before" = "$after" ] || EX_CHANGED=1 ;;
       *)     if ! cmp -s "$tmp" "$dest" 2>/dev/null; then cat "$tmp" > "$dest"; EX_CHANGED=1; fi ;;
@@ -863,6 +984,54 @@ extra_setup_nvim() {
   echo "  The editor background is transparent (matches a translucent terminal). Solid: put  vim.g.kurenai_transparent = false  before that line."
 }
 extra_teardown_nvim() { rm -f "$CFG/nvim/colors/kurenai.lua" "$CFG/nvim/plugin/kurenai-watch.lua"; return 0; }
+
+extra_setup_pacsea() {
+  ex_need pacsea "AUR: pacsea-bin"
+  local f="$CFG/pacsea/theme.conf" orig="$EXTRAS_DIR/pacsea.theme.conf.orig"
+  mkdir -p "$CFG/pacsea" "$EXTRAS_DIR"
+  # Pacsea REPORTS duplicate keys instead of resolving them, so a managed block next to your own colour lines would not work:
+  # theme.conf is owned by KURENAI while this is on, and your file is kept to be put back byte for byte.
+  if [ -f "$f" ] && [ ! -f "$orig" ] && ! grep -q '^# KURENAI colours for Pacsea' "$f"; then
+    ex_backup "$f"; cp -p "$f" "$orig"
+  fi
+  echo "  theme.conf: colours are written to $f (16 colour roles). Your own file is kept: $( [ -f "$orig" ] && echo "$orig" || echo 'there was none, so Pacsea writes its default when you turn this off')."
+  echo "  A running Pacsea picks the new colours up with Ctrl+R (its own 'reload config'); otherwise at the next start."
+  echo "  If your settings.conf has use_terminal_theme = true, Pacsea uses the terminal colours instead and ignores theme.conf."
+  echo "  Edits you make to theme.conf by hand while this is on are overwritten at the next colour change."
+}
+extra_teardown_pacsea() {
+  local f="$CFG/pacsea/theme.conf" orig="$EXTRAS_DIR/pacsea.theme.conf.orig"
+  if [ -f "$orig" ]; then cat "$orig" > "$f"; rm -f "$orig"
+  elif [ -f "$f" ] && grep -q '^# KURENAI colours for Pacsea' "$f"; then rm -f "$f"; fi
+  return 0
+}
+
+# lazygit: the colours are a "gui: theme:" section. YAML forbids a second top-level gui: key, so
+#   * no gui: in your config.yml   -> one managed block is added to ~/.config/lazygit/config.yml (kind lgblock)
+#   * you already have a gui: key  -> your file is NOT touched; ~/.config/lazygit/kurenai-theme.yml is written instead (kind lgfile)
+#     and lazygit merges it when started as:  LG_CONFIG_FILE="$HOME/.config/lazygit/config.yml,$HOME/.config/lazygit/kurenai-theme.yml" lazygit
+lazygit_mode() { cat "$EXTRAS_DIR/lazygit.mode" 2>/dev/null || echo block; }
+extra_skip_lazygit() { case "$1:$(lazygit_mode)" in lgblock:file|lgfile:block) return 0 ;; esac; return 1; }
+extra_setup_lazygit() {
+  ex_need lazygit "sudo pacman -S lazygit"
+  local f="$CFG/lazygit/config.yml" b e
+  b="$(ex_mark begin hash)"; e="$(ex_mark end hash)"
+  mkdir -p "$CFG/lazygit" "$EXTRAS_DIR"
+  if [ -f "$f" ] && awk -v b="$b" -v e="$e" 'index($0,b){s=1;next} s&&index($0,e){s=0;next} !s&&/^gui:/{f=1} END{exit !f}' "$f"; then
+    echo file > "$EXTRAS_DIR/lazygit.mode"
+    echo "  Your config.yml already has a top-level 'gui:' section, and YAML allows only one, so it was NOT touched."
+    echo "  The colours are written to $CFG/lazygit/kurenai-theme.yml. Start lazygit with both files (documented lazygit feature):"
+    echo "    LG_CONFIG_FILE=\"\$HOME/.config/lazygit/config.yml,\$HOME/.config/lazygit/kurenai-theme.yml\" lazygit"
+    echo "  (an alias does it for every start:  alias lazygit='LG_CONFIG_FILE=...'  with the line above). Or move the theme: block into your gui: section yourself."
+  else
+    echo block > "$EXTRAS_DIR/lazygit.mode"
+    echo "  config.yml: one managed block (gui: theme:) added at the END of $f; the rest of the file is untouched."
+  fi
+  echo "  lazygit reads its config at start: restart open lazygit windows. Colours are hex values (needs a truecolor terminal such as kitty)."
+}
+extra_teardown_lazygit() {
+  ex_block_remove "$CFG/lazygit/config.yml" hash; rm -f "$CFG/lazygit/kurenai-theme.yml" "$EXTRAS_DIR/lazygit.mode"; return 0
+}
 
 extra_setup_spicetify() {
   ex_need spicetify "AUR: spicetify-cli"
@@ -1074,12 +1243,12 @@ cmd_theme_firefox() {   # cmd_theme_firefox status|script|home|profile [args]
 }
 
 # ---- commands -------------------------------------------------------------------------------------------------------------
-extra_dests() { local mf="$EXTRAS_DIR/$1/MANIFEST" kind tpl dest style; [ -f "$mf" ] || return 0; while IFS='|' read -r kind tpl dest style; do case "$kind" in ''|\#*) continue;; esac; ex_path "$dest"; echo; done < "$mf"; }
+extra_dests() { local mf="$EXTRAS_DIR/$1/MANIFEST" kind tpl dest style; [ -f "$mf" ] || return 0; while IFS='|' read -r kind tpl dest style; do case "$kind" in ''|\#*) continue;; esac; if command -v "extra_skip_$1" >/dev/null 2>&1 && "extra_skip_$1" "$kind"; then continue; fi; ex_path "$dest"; echo; done < "$mf"; }
 cmd_theme_extras() {
   local act="${1:-status}"; [ $# -gt 0 ] && shift
   case "$act" in
     status)
-      echo "app colours (kitty gtk qt btop yazi zathura nvim spicetify firefox)   follow wallpaper changes: $([ "$(theme_get extras_follow 1)" = 1 ] && echo yes || echo no)"
+      echo "app colours (kitty gtk qt btop yazi zathura nvim spicetify pacsea lazygit firefox)   follow wallpaper changes: $([ "$(theme_get extras_follow 1)" = 1 ] && echo yes || echo no)"
       echo "  colours now: $(theme_enabled && grep -q '"enabled": true' "$THEME_PAL" 2>/dev/null && echo 'from the wallpaper' || echo 'built-in KURENAI colours')"
       local x app state files d n
       for x in $EXTRAS_ALL; do
@@ -1250,6 +1419,123 @@ clip_helper() {
   if [ -x "$here/kurenai-clip" ]; then printf '%s' "$here/kurenai-clip"; else printf '%s' "$HOME/.local/bin/kurenai-clip"; fi
 }
 clip_watchers() { pgrep -f "$CLIP_WATCH_PAT" 2>/dev/null; }
+
+prog_path() {   # prog_path NAME: the sibling of this script, else ~/.local/bin
+  local here; here="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+  if [ -x "$here/$1" ]; then printf '%s' "$here/$1"; else printf '%s' "$HOME/.local/bin/$1"; fi
+}
+cmd_conf() { local p; p="$(prog_path kurenai-conf)"; [ -x "$p" ] || die "kurenai-conf is not installed; run install.sh"; "$p" "$@"; }
+cmd_hypr() { local p; p="$(prog_path kurenai-hypr)"; [ -x "$p" ] || die "kurenai-hypr is not installed; run install.sh"; "$p" "$@"; }
+cmd_settings() {
+  local p; p="$(prog_path kurenai-settings)"; [ -x "$p" ] || die "kurenai-settings is not installed; run install.sh"
+  exec "$p" "$@"
+}
+
+# ---- the "KURENAI Settings" application entry (what Rofi drun and the launcher list) ----------------------------------
+# A .desktop Exec= is run WITHOUT a shell: "~" and "$HOME" are not expanded, and the PATH is the one of the program that
+# started Rofi (Hyprland), which usually has no ~/.local/bin. A bare "Exec=kurenai-settings" therefore fails in Rofi with
+# "Failed to execute: 'kurenai-settings' ... No such file or directory". So the entry always holds the ABSOLUTE path.
+DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+DESKTOP_FILE="$DESKTOP_DIR/kurenai-settings.desktop"
+desktop_exec_path() {   # the program the entry should start: the one next to this script, else ~/.local/bin
+  local p; p="$(prog_path kurenai-settings)"
+  [ -x "$p" ] || p="$HOME/.local/bin/kurenai-settings"
+  printf '%s' "$p"
+}
+desktop_quote() {       # Exec quoting: plain paths as they are; anything unusual in double quotes ("%" doubled)
+  local p="${1//%/%%}"
+  case "$p" in *[!A-Za-z0-9_./+-]*) p="${p//\\/\\\\}"; p="${p//\"/\\\"}"; p="${p//\$/\\$}"; p="${p//\`/\\\`}"; p="\"$p\"" ;; esac
+  printf '%s' "$p"
+}
+desktop_entry_text() {
+  cat <<DESK
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=KURENAI Settings
+GenericName=Desktop settings
+Comment=Settings for the KURENAI desktop: colours, wallpaper, launcher, keybinds, lock screen, display
+Exec=$(desktop_quote "$1")
+Icon=preferences-desktop
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=kurenai;settings;theme;wallpaper;colours;colors;keybinds;lock;display;hyprland;
+StartupNotify=false
+DESK
+}
+desktop_exec_of() { sed -n 's/^Exec=//p' "$DESKTOP_FILE" 2>/dev/null | head -n 1; }
+desktop_entry_ok() {    # the installed entry's Exec is an absolute path to an executable file (returns 0/1)
+  local e; e="$(desktop_exec_of)"
+  case "$e" in \"*) e="${e#\"}"; e="${e%%\"*}" ;; *) e="${e%% *}" ;; esac
+  case "$e" in /*) [ -x "$e" ] ;; *) return 1 ;; esac
+}
+cmd_desktop_entry() {
+  local sub="${1:-status}" target
+  target="$(desktop_exec_path)"
+  case "$sub" in
+    status|check)
+      if [ ! -f "$DESKTOP_FILE" ]; then echo "application entry: not installed ($DESKTOP_FILE). Fix: kurenai-ctl desktop-entry install"; return 1; fi
+      echo "application entry: $DESKTOP_FILE"
+      echo "  Exec=$(desktop_exec_of)"
+      if desktop_entry_ok; then echo "  OK: absolute path to an executable file (works from Rofi and the launcher)"; return 0; fi
+      echo "  PROBLEM: not an absolute path to an executable file; Rofi starts it without ~/.local/bin on PATH."
+      echo "  Fix: kurenai-ctl desktop-entry install"; return 1 ;;
+    install)
+      [ -x "$target" ] || die "kurenai-settings is not installed at $target; run install.sh"
+      mkdir -p "$DESKTOP_DIR" || die "cannot create $DESKTOP_DIR"
+      desktop_entry_text "$target" > "$DESKTOP_FILE.tmp" && mv -f "$DESKTOP_FILE.tmp" "$DESKTOP_FILE" || die "cannot write $DESKTOP_FILE"
+      have update-desktop-database && update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1
+      echo "application entry written: $DESKTOP_FILE"
+      echo "  Exec=$(desktop_exec_of)"
+      echo "  Rofi reads it next time it opens. Undo: kurenai-ctl desktop-entry remove" ;;
+    remove)
+      if [ -f "$DESKTOP_FILE" ]; then rm -f "$DESKTOP_FILE"; have update-desktop-database && update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1; echo "removed $DESKTOP_FILE"
+      else echo "nothing to remove."; fi ;;
+    *) die "usage: kurenai-ctl desktop-entry [status|install|remove]" ;;
+  esac
+}
+
+jclean() { tr -d '"\\' | tr -d '[:cntrl:]'; }   # make a value safe inside a JSON string
+jbool() { if "$@"; then printf true; else printf false; fi; }
+cmd_status() {
+  if [ "${1:-}" != "--json" ]; then
+    echo "shell:  $(shell_running && echo "running (pid $(shell_pids | tr '\n' ' '))" || echo stopped)"
+    echo "lock:   $(lock_running && echo "running, $(lock_state)" || echo stopped)"
+    local m n; for m in THEME:enable BINDS:binds AUTO:autostart LOCK:lock HYPR:hypr; do
+      n="MARK_${m%%:*}"; printf 'hook %-10s %s\n' "${m##*:}" "$(hook_active "$HYPR_DIR/hyprland.lua" "${!n}" && echo active || echo off)"
+    done
+    echo "(machine-readable: kurenai-ctl status --json)"; return 0
+  fi
+  local pids first=1 p x
+  pids="$(shell_pids)"
+  printf '{\n  "shell": {"running": %s, "pids": [' "$(jbool shell_running)"
+  for p in $pids; do [ "$first" = 1 ] || printf ', '; first=0; printf '%s' "$p"; done
+  printf ']},\n'
+  printf '  "lock": {"running": %s, "state": "%s"},\n' "$(jbool lock_running)" "$(lock_state | head -1 | jclean)"
+  printf '  "hooks": {"theme": %s, "binds": %s, "autostart": %s, "lock": %s, "hypr": %s},\n' \
+    "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_THEME")" "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_BINDS")" \
+    "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_AUTO")" "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_LOCK")" \
+    "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_HYPR")"
+  printf '  "theme": {"enabled": %s, "type": "%s", "contrast": "%s", "accent": "%s", "hypr": %s, "rofi": %s, "extrasFollow": %s, "extras": [' \
+    "$(jbool theme_enabled)" "$(theme_get type tonal-spot | jclean)" "$(theme_get contrast 0 | jclean)" "$(theme_get accent wallpaper | jclean)" \
+    "$([ "$(theme_get hypr 1)" = 1 ] && echo true || echo false)" "$([ "$(theme_get rofi 1)" = 1 ] && echo true || echo false)" \
+    "$([ "$(theme_get extras_follow 1)" = 1 ] && echo true || echo false)"
+  first=1; for x in $EXTRAS_ALL; do extra_attached "$x" || continue; [ "$first" = 1 ] || printf ', '; first=0; printf '"%s"' "$x"; done
+  printf ']},\n'
+  local ffp="" ffs=false; ffp="$(firefox_profile_dir 2>/dev/null)" || ffp=""
+  [ -n "$ffp" ] && [ -f "$ffp/chrome/JS/kurenai.uc.js" ] && ffs=true
+  printf '  "firefox": {"attached": %s, "home": %s, "script": %s},\n' "$(jbool extra_attached firefox)" \
+    "$([ "$(theme_get firefox_home 0)" = 1 ] && echo true || echo false)" "$ffs"
+  printf '  "notifier": "%s",\n' "$(notif_owner | jclean)"
+  printf '  "tools": {'; first=1
+  for x in qs awww matugen cliphist wl-copy hyprctl rofi brightnessctl hyprsunset notify-send busctl; do
+    [ "$first" = 1 ] || printf ', '; first=0; printf '"%s": %s' "$x" "$(jbool have "$x")"
+  done
+  printf '},\n'
+  printf '  "installed": {"conf": %s, "hypr": %s, "clip": %s, "settings": %s}\n}\n' \
+    "$([ -x "$(prog_path kurenai-conf)" ] && echo true || echo false)" "$([ -x "$(prog_path kurenai-hypr)" ] && echo true || echo false)" \
+    "$([ -x "$(prog_path kurenai-clip)" ] && echo true || echo false)" "$([ -x "$(prog_path kurenai-settings)" ] && echo true || echo false)"
+}
 
 cmd_clip()        { [ -x "$(clip_helper)" ] || die "kurenai-clip is not installed; run install.sh"; "$(clip_helper)" "$@"; }
 cmd_clip_status() {
@@ -1435,6 +1721,7 @@ cmd_lock_sync_theme() {
   local a="$QS_DIR/kurenai/Theme.qml" b="$QS_DIR/kurenai-lock/Theme.qml"
   [ -f "$a" ] && [ -d "$QS_DIR/kurenai-lock" ] || die "both configs must be installed"
   cp "$a" "$b" && echo "Theme copied into the lock config."
+  if [ -d "$QS_DIR/kurenai-settings" ]; then cp "$a" "$QS_DIR/kurenai-settings/Theme.qml" && echo "Theme copied into the settings window too (it picks it up the next time it opens)."; fi
   echo "The running locker keeps the old look until restarted: kurenai-ctl lock-stop && kurenai-ctl lock-start"
 }
 
@@ -1466,11 +1753,12 @@ move_aside() {
   local dest="$STATE/removed-$(stamp)"
   mkdir -p "$dest"
   local f
-  for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua; do
+  for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua kurenai-hypr.lua; do
     [ -e "$HYPR_DIR/$f" ] && mv "$HYPR_DIR/$f" "$dest/"
   done
   [ -d "$QS_DIR/kurenai" ] && mv "$QS_DIR/kurenai" "$dest/quickshell-kurenai"
   [ -d "$QS_DIR/kurenai-lock" ] && mv "$QS_DIR/kurenai-lock" "$dest/quickshell-kurenai-lock"
+  [ -d "$QS_DIR/kurenai-settings" ] && mv "$QS_DIR/kurenai-settings" "$dest/quickshell-kurenai-settings"
   echo "KURENAI files moved to $dest (nothing deleted)"
   return 0
 }
@@ -1482,6 +1770,7 @@ cmd_rollback() {
   cmd_notif_restore
   cmd_disable_autostart
   cmd_disable_binds
+  cmd_disable_hypr
   cmd_disable
   move_aside
   reload_hypr
@@ -1526,7 +1815,11 @@ cmd_validate() {
     hook_active "$HYPR_DIR/hyprland.lua" "$MARK_THEME" && ok "theme hook active"      || warn "theme hook not active (kurenai-ctl enable)"
     hook_active "$HYPR_DIR/hyprland.lua" "$MARK_BINDS" && ok "binds hook active"      || warn "binds hook not active (kurenai-ctl binds-check, then enable-binds)"
     hook_active "$HYPR_DIR/hyprland.lua" "$MARK_AUTO"  && ok "autostart hook active"  || warn "autostart hook not active (enable only after the shell works)"
+    hook_active "$HYPR_DIR/hyprland.lua" "$MARK_HYPR"  && ok "display/input hook active" || ok "display/input hook not active (only needed if you use kurenai-hypr)"
   fi
+  if [ -f "$DESKTOP_FILE" ]; then
+    desktop_entry_ok && ok "Settings application entry uses an absolute path" || bad "Settings application entry is not an absolute path: Rofi cannot start it (fix: kurenai-ctl desktop-entry install)"
+  else warn "no Settings application entry (Rofi will not list KURENAI Settings): kurenai-ctl desktop-entry install"; fi
   for f in kurenai-binds.lua kurenai-autostart.lua; do
     [ -f "$HYPR_DIR/$f.new" ] && warn "$f.new is waiting: your $f is older than the shipped one. Compare: diff $HYPR_DIR/$f $HYPR_DIR/$f.new"
   done
@@ -1547,9 +1840,19 @@ cmd_validate() {
     [ -z "$missing" ] && ok "every file listed in qmldir exists" || bad "qmldir lists missing files:$missing"
   fi
 
+  echo "Settings store and window"
+  local cp; for cp in kurenai-conf kurenai-hypr kurenai-settings; do
+    [ -x "$(prog_path $cp)" ] && ok "$cp installed" || warn "$cp not installed (re-run install.sh)"
+  done
+  [ -f "$QS_DIR/kurenai-settings/shell.qml" ] && ok "settings window config present (qs -c kurenai-settings)" || warn "settings window config missing (re-run install.sh)"
+  if [ -f "$CFG/kurenai/settings.json" ]; then
+    if have python3; then python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$CFG/kurenai/settings.json" 2>/dev/null && ok "settings.json is valid JSON" || bad "settings.json is not valid JSON: the shell ignores it (kurenai-conf reset --all, a copy is kept as settings.json.bak)"
+    else ok "settings.json present (python3 not installed: not parsed here)"; fi
+  else ok "no settings.json (all defaults)"; fi
+
   echo "Lua syntax"
   if have luac; then
-    for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua; do
+    for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua kurenai-hypr.lua; do
       [ -f "$HYPR_DIR/$f" ] && { luac -p "$HYPR_DIR/$f" 2>/dev/null && ok "$f parses" || bad "$f has a syntax error"; }
     done
   else warn "luac not installed; skipping syntax check (optional)"; fi
@@ -1640,6 +1943,8 @@ cmd_validate() {
     [ -e /usr/lib/security/pam_unix.so ] || [ -e /lib/security/pam_unix.so ] && ok "pam_unix module present" || warn "pam_unix.so not found where expected"
     cmp -s "$QS_DIR/kurenai/Theme.qml" "$QS_DIR/kurenai-lock/Theme.qml" && ok "lock theme matches the main theme" \
       || warn "lock theme differs from the main Theme.qml (kurenai-ctl lock-sync-theme)"
+    [ ! -d "$QS_DIR/kurenai-settings" ] || cmp -s "$QS_DIR/kurenai/Theme.qml" "$QS_DIR/kurenai-settings/Theme.qml" \
+      || warn "settings window theme differs from the main Theme.qml (kurenai-ctl lock-sync-theme copies it to both)"
     if [ -f "$HYPR_DIR/hyprland.lua" ] && hook_active "$HYPR_DIR/hyprland.lua" "$MARK_LOCK"; then ok "lock hook active (restart-after-crash + autostart)"
     else warn "lock hook not active: the locker will not start with the session (kurenai-ctl enable-lock)"; fi
     grep -qs 'allow_session_lock_restore *= *true' "$HYPR_DIR/kurenai-lock.lua" "$HYPR_DIR/hyprland.lua" \
@@ -1765,6 +2070,7 @@ cmd_validate() {
 
 case "${1:-}" in
   backup)            cmd_backup ;;
+  backups)           shift; cmd_backups "$@" ;;
   validate)          cmd_validate ;;
   enable)            cmd_enable ;;
   disable)           cmd_disable ;;
@@ -1779,6 +2085,13 @@ case "${1:-}" in
   logs)              cmd_logs ;;
   debug)             cmd_debug ;;
   media-binds)       cmd_media_binds ;;
+  conf)              shift; cmd_conf "$@" ;;
+  hypr)              shift; cmd_hypr "$@" ;;
+  settings)          shift; cmd_settings "$@" ;;
+  status)            shift; cmd_status "$@" ;;
+  desktop-entry)     shift; cmd_desktop_entry "$@" ;;
+  enable-hypr)       cmd_enable_hypr ;;
+  disable-hypr)      cmd_disable_hypr ;;
   clip)              shift; cmd_clip "$@" ;;
   clip-status)       cmd_clip_status ;;
   clip-wipe)         cmd_clip_wipe ;;
@@ -1797,6 +2110,7 @@ case "${1:-}" in
   lock-sync-theme)   cmd_lock_sync_theme ;;
   lock-harden)       cmd_lock_harden ;;
   notif-status)      cmd_notif_status ;;
+  notif-test)        cmd_notif_test ;;
   notif-takeover)    cmd_notif_takeover ;;
   notif-restore)     cmd_notif_restore ;;
   reset-launcher)    cmd_reset_launcher ;;
@@ -1804,6 +2118,7 @@ case "${1:-}" in
   theme)             shift; cmd_theme "$@" ;;
   theme-apply)       shift; cmd_theme_apply "$@" ;;
   theme-sync)        shift; cmd_theme_sync "$@" ;;
+  wallpaper)         shift; cmd_wallpaper "$@" ;;
   rollback)          cmd_rollback ;;
   restore)           cmd_restore ;;
   *)                 usage; [ -z "${1:-}" ] || exit 1 ;;

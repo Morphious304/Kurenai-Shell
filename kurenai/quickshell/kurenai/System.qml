@@ -182,6 +182,12 @@ Singleton {
 
     function openTool(cmd) { if (cmd !== "") Quickshell.execDetached([cmd]); }
 
+    // The KURENAI Settings window (its own Quickshell config; it also opens with this shell stopped). Started through
+    // sh so it is found even when ~/.local/bin is not on this shell's PATH, the same trick as ThemeCtl.
+    function openSettings() {
+        Quickshell.execDetached(["sh", "-c", 'k=$(command -v kurenai-settings || echo "$HOME/.local/bin/kurenai-settings"); exec "$k"']);
+    }
+
     Process {
         id: toolProbe
         command: ["sh", "-c",

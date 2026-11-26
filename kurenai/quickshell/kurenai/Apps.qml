@@ -173,6 +173,10 @@ Singleton {
         id: file
         path: root.dataDir + "/launcher.json"
         blockLoading: true
+        watchChanges: true                      // `kurenai-conf fav ...` and the settings window edit this file too
+        printErrors: false
+        onFileChanged: file.reload()
+        onLoaded: root.load()
     }
 
     function load() {
