@@ -927,11 +927,34 @@ firefox_profiles_seen() {   # what to show when the right profile cannot be told
   done < <(firefox_roots)
 }
 firefox_start_dir() { printf '%s' "${XDG_DATA_HOME:-$HOME/.local/share}/kurenai/firefox"; }
+firefox_start_url() {   # the start page as a file:// address (what you can paste into Firefox): % space # ? are percent-encoded
+  local d; d="$(firefox_start_dir)"; d="${d//%/%25}"; d="${d// /%20}"; d="${d//#/%23}"; d="${d//\?/%3F}"
+  printf 'file://%s/start.html' "$d"
+}
+# `extra_post_firefox` runs on every rendered file (see extra_render). For start.html it folds the colours, the stylesheet and
+# your links into ONE self-contained page: New Tab Override stores only the HTML file you pick, it cannot read start.css or
+# start-links.js next to it (first run: unstyled page with a giant black circle).
+extra_post_firefox() {   # extra_post_firefox RENDERED_FILE TEMPLATE_NAME
+  [ "$2" = start.html ] || return 0
+  local d lk out; d="$(firefox_start_dir)"; lk="$d/start-links.js"; [ -f "$lk" ] || lk="$EXTRAS_DIR/firefox/start-links.js"
+  out="$(mktemp "$STATE/next/ex.XXXXXX")"
+  awk -v cf="$d/start-colors.css" -v sf="$EXTRAS_DIR/firefox/start.css" -v lf="$lk" '
+    index($0, "<link rel=\"stylesheet\" href=\"start-colors.css\">") { print "<style>"; while ((getline l < cf) > 0) print l; while ((getline l < sf) > 0) print l; print "</style>"; next }
+    index($0, "<link rel=\"stylesheet\" href=\"start.css\">") { next }
+    index($0, "<script src=\"start-links.js\"></script>") { print "<script>"; while ((getline l < lf) > 0) { gsub(/<\//, "<\\/", l); print l } print "</script>"; next }
+    { print }' "$1" > "$out" && [ -s "$out" ] && cat "$out" > "$1"
+  rm -f "$out"
+}
 firefox_userjs_write() {   # the one managed block in user.js (the stylesheet switch, plus the home page when `home on`)
   local p="$1" c d; c="$(mktemp "$STATE/next/blk.XXXXXX")"; d="$(firefox_start_dir)"
   {
     echo 'user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);'
-    [ "$(theme_get firefox_home 0)" = 1 ] && printf 'user_pref("browser.startup.homepage", "file://%s/start.html");\n' "${d// /%20}"
+    if [ "$(theme_get firefox_home 0)" = 1 ]; then
+      printf 'user_pref("browser.startup.homepage", "%s");\n' "$(firefox_start_url)"
+      printf 'user_pref("kurenai.newtab", "%s");\n' "$(firefox_start_url)"   # read by the script layer: new tabs open the start page
+    else
+      echo 'user_pref("kurenai.newtab", "");'
+    fi
   } > "$c"
   ex_block_put "$p/user.js" js "$c"; rm -f "$c"
 }
@@ -1018,9 +1041,10 @@ cmd_theme_firefox() {   # cmd_theme_firefox status|script|home|profile [args]
       p="$(firefox_profile_dir)" || die "Firefox profile not found"
       theme_set firefox_home "$([ "$1" = on ] && echo 1 || echo 0)"; firefox_userjs_write "$p"
       if [ "$1" = on ]; then
-        echo "home page: set to the KURENAI start page ($(firefox_start_dir)/start.html) from the next start. Firefox re-applies it on every start (user.js), so a home page you pick in Settings is overridden until 'home off'."
+        echo "home page: set to the KURENAI start page from the next start. Firefox re-applies it on every start (user.js), so a home page you pick in Settings is overridden until 'home off'."
         echo "your links and search address: $(firefox_start_dir)/start-links.js (edit it; it is never overwritten)."
-        echo "New TABS still show Firefox's own page. To use this page for new tabs too, add-on 'New Tab Override' can point them at the file address above."
+        echo "the address (paste it into Firefox with the file:// part): $(firefox_start_url)"
+        echo "New TABS: with the script layer (kurenai-ctl theme extra firefox script on) new tabs open the start page too, straight from the file (no add-on). Without it, new tabs show Firefox's own page. If you use the add-on 'New Tab Override', switch it off or remove it: it serves a COPY as an extension page, where the page's scripts (clock, tiles) are blocked."
       else echo "home page: KURENAI no longer sets it. Firefox keeps the last value in prefs.js: choose your page in Settings > Home (or Restore Defaults)."; fi ;;
     script)
       extra_attached firefox || die "attach first: kurenai-ctl theme extra firefox on"
@@ -1039,7 +1063,8 @@ cmd_theme_firefox() {   # cmd_theme_firefox status|script|home|profile [args]
           mkdir -p "$p/chrome/JS"; cp "$EXTRAS_DIR/firefox/kurenai.uc.js" "$p/chrome/JS/kurenai.uc.js"
           firefox_program_ok || echo "  note: config.js was not found in /usr/lib/firefox or /usr/lib64/firefox; the script only runs when fx-autoconfig's program files are installed there."
           echo "script layer: installed (chrome/JS/kurenai.uc.js). Restart Firefox. Keys: Ctrl+Alt+H cycles hide states, Ctrl+Alt+V vertical tabs, Ctrl+L again closes the address card. A toolbar button 'Show and hide' is added to the toolbar." ;;
-        off) firefox_script_remove "$p"; echo "script layer: removed. Restart Firefox. (The hide state attribute is simply ignored without it.)" ;;
+        off) firefox_script_remove "$p"; echo "script layer: removed. Restart Firefox. (The hide state attribute is simply ignored without it.)"
+             echo "  If you had the tabs hidden in vertical mode, Firefox's sidebar may still be set to 'hide-sidebar': Settings > Sidebar > untick 'Hide tabs and sidebar' (or about:config: reset sidebar.visibility and kurenai.saved-sidebar-visibility). Better: choose 'Show everything' in the menu BEFORE removing the script." ;;
         status) [ -f "$p/chrome/JS/kurenai.uc.js" ] && echo "script layer: installed" || echo "script layer: not installed"
                 echo "  fx-autoconfig in the profile: $(firefox_loader_ok "$p" && echo yes || echo no);  program files in the Firefox folder: $(firefox_program_ok && echo yes || echo 'not found')" ;;
         *) die "usage: kurenai-ctl theme extra firefox script on|off|status" ;;

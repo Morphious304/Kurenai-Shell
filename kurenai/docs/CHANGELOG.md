@@ -4,7 +4,30 @@
 
 Newest first. Only user-visible changes and fixes.
 
-## Firefox theme (this package)
+## Firefox theme, fourth version (after your third video: new tabs)
+- Fixed: on a new tab the address bar was focused by Firefox and the launcher card opened over the start page, dimming it and showing the raw `moz-extension://` address. The card now opens only on results, while you type, or when you ask (Ctrl+L, Ctrl+K, Alt+D, a click on the pill; the script layer marks these). Esc or Ctrl+L closes it.
+- Fixed: with the address bar hidden, a new tab no longer slides the toolbar down.
+- Changed: with the script layer, `home on` also makes the start page the **new tab page** (straight from the file, no add-on). The New Tab Override add-on served a copy as an extension page, where inline scripts are blocked: the clock, date, tiles and petals did not appear. Remove or switch off that add-on.
+- Run with real key presses in Firefox 160.0.1; the add-on's script blocking is inferred (not reproduced). Changed: `kurenai.css`, `kurenai.uc.js`, `kurenai-ctl` (`home on/off` writes `kurenai.newtab`), docs.
+
+## Firefox theme, third version (after your second video)
+- Fixed (root cause): the earlier card rules targeted names that do not exist in Firefox 160 (`#urlbar-background`, `#urlbar[breakout]`), so the card never widened. Everything is rewritten against the names that Firefox 160.0.1 really has.
+- Changed: horizontal mode is **one row** (tab strip left, address pill right), as on the washi artboard; windows narrower than 920 px fall back to two rows.
+- Changed: the address bar is **detached into a wide centred launcher card** over a dimmed page while focused (both modes, also when hidden), as on the makimono artboard.
+- Changed: with the address bar hidden, Ctrl+L shows only the card; with it hidden in horizontal mode the tab strip takes the full row.
+- Changed: start page matches the artboard more closely: six default tiles, key-hint line, larger warmer clock, red glow, deeper petals. Your `start-links.js` is never overwritten: delete it and run `theme extras apply` to get the new tiles.
+- **Run in a real Firefox 160.0.1** (virtual display + Marionette + screenshots). Not reproduced: your Hyprland session, real profile and add-ons. Not built: makimono's mode chips and footer hints inside the card. See [FIREFOX.md](FIREFOX.md).
+
+## Firefox theme, second version (after your screen recording)
+- Fixed: the accent was Firefox's purple (focus ring on the address bar, buttons); the stylesheet now sets Firefox's accent variables and draws the address focus ring itself.
+- Fixed: hiding the address bar now frees the space completely (overlay with a top-edge hover strip, no layout jump on reveal).
+- Fixed: Firefox's launcher column is hidden in horizontal-tab mode; with the tabs hidden in vertical mode the script uses Firefox's own `sidebar.visibility` (`hide-sidebar`) and restores your value afterwards.
+- Fixed: the floating address card is wider and centred; the selected-tab styling uses the current variable names.
+- Fixed: the "Show and hide" menu ticks followed the real state (a stale tick stayed on "Hide address bar").
+- Fixed: the start page is now one self-contained file (works as a New Tab Override), no scroll bar; `home on` prints a real `file:///...` address, not a bare path.
+- **Not run in Firefox**: the second version is untested there; see the lists in [FIREFOX.md](FIREFOX.md). Changed: `kurenai.css`, `kurenai-content.css`, `kurenai.uc.js`, `start.css`, `kurenai-ctl`, docs.
+
+## Firefox theme (first version)
 - New, opt-in: `kurenai-ctl theme extra firefox on|off`. Stylesheet layer (tab rail or horizontal tabs, address pill and floating card, Firefox's own pages), optional local start page (`home on|off`), optional script layer (`script on|off`, needs the fx-autoconfig loader, which kurenai-ctl never installs). Profile found from `profiles.ini` or `--profile DIR`. See [FIREFOX.md](FIREFOX.md).
 - **Not run in Firefox 160** (no Firefox in the sandbox): see the unverified list in FIREFOX.md. Install/undo/colours were run in a fake home.
 - Changes to your files: one marked block at the top of `userChrome.css`/`userContent.css` and one in `user.js`, after a backup; `off` restores them byte for byte. Firefox keeps `toolkit.legacyUserProfileCustomizations.stylesheets` (and a home page set by `home on`) in `prefs.js` after `off`; FIREFOX.md says how to reset them.

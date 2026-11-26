@@ -94,7 +94,7 @@ and what you expected to happen. I can only reason from what you paste; I cannot
 | Want the original look back | `kurenai-ctl theme off` (or `theme reset`) |
 
 ## Firefox
-See the table at the end of [FIREFOX.md](FIREFOX.md) (restart Firefox fully first; recolours show only after a restart).
+See the table at the end of [FIREFOX.md](FIREFOX.md) (restart Firefox fully first; recolours show only after a restart; a New Tab Override start page needs picking again after a recolour). Firefox 160 ships the new "Nova" interface (`browser.nova.enabled`); the theme targets its element names, so an older Firefox may look different.
 
 ## App colours
 

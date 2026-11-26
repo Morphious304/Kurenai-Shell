@@ -1,14 +1,15 @@
 /* KURENAI for Firefox: browser chrome (loaded from userChrome.css by one managed @import line).
  *
- * Written from Firefox's own source (mozilla-central: navigator-toolbox.inc.xhtml, browser-box.inc.xhtml,
- * tabbrowser/tabs.css, urlbar-searchbar.css, UrlbarView.sys.mjs). Nothing here has been run in Firefox 160 yet.
- * Rules that must beat Firefox's own styles carry !important (the usual rule for userChrome.css).
- * Firefox does not support custom CSS and an update can move things: if the browser looks broken, run
+ * Version 4. Written against Firefox 160.0.1's own files (read from its omni.ja) and run in that exact build under a
+ * test rig (Xvfb + Marionette): the selectors below are the ones that exist there (Nova UI: moz-urlbar#urlbar,
+ * .urlbar-background, [focused] / [popover-open], the .urlbarView popover). Rules that must beat Firefox's own styles
+ * carry !important. Firefox does not support custom CSS and an update can move things: if the browser looks broken, run
  *   kurenai-ctl theme extra firefox off      (or delete the one @import block at the top of chrome/userChrome.css)
  *
- * Layout idea: tabs on a rail (Firefox's vertical tabs) or on a bar (horizontal), a slim address pill, and the
- * address dropdown restyled as a launcher-like card. The hide states at the end are driven by the optional script
- * (chrome/JS/kurenai.uc.js, needs fx-autoconfig). Without the script nothing below the marker "HIDE STATES" matches.
+ * Layout: horizontal mode = ONE row (tab strip left, address pill right, window >= 920px wide; narrower falls back to
+ * two rows); vertical mode = Firefox's vertical tabs as the rail. The address bar, when focused, is detached from the
+ * toolbar into a wide centred launcher card over a dimmed page. Hide states (end of file) need the optional script
+ * (chrome/JS/kurenai.uc.js, fx-autoconfig); without it nothing below "HIDE STATES" matches.
  */
 @import url("kurenai-colors.css");
 
@@ -35,6 +36,11 @@
   --toolbarbutton-icon-fill: var(--kn-text2) !important;
   --toolbarbutton-hover-background: var(--kn-raised) !important;
   --toolbarbutton-active-background: var(--kn-raised) !important;
+  --toolbarbutton-background-color-hover: var(--kn-raised) !important;
+  /* tab colours: the names in Firefox's current tabs.css (checked in source); the old --tab-selected-* are kept, harmless */
+  --tab-background-color-selected: var(--kn-surface) !important;
+  --tab-border-color-selected: transparent !important;
+  --tab-box-shadow-selected: none !important;
   --tab-selected-bgcolor: var(--kn-surface) !important;
   --tab-selected-textcolor: var(--kn-text) !important;
   --lwt-accent-color: var(--kn-bg) !important;
@@ -51,6 +57,28 @@
   --urlbarView-hover-background: var(--kn-hover) !important;
   --sidebar-background-color: var(--kn-bg) !important;
   --sidebar-text-color: var(--kn-text) !important;
+}
+
+/* ---- 1b. the accent ------------------------------------------------------------------------------------------------
+ * The first run showed Firefox's own purple/blue on focus rings, selected menu rows and buttons. --color-accent-primary
+ * (and accent-color on :root) are in browser-shared.css (checked); --focus-outline-color is only named in a comment
+ * there (unchecked). The ring on the address bar is a plain outline, so it is also set directly further down. */
+:root {
+  --color-accent-primary: var(--kn-accent) !important;
+  --color-accent-primary-hover: var(--kn-accent) !important;     /* unchecked */
+  --focus-outline-color: var(--kn-accent) !important;            /* unchecked */
+  --button-background-color-primary: var(--kn-accent) !important; /* unchecked */
+  --button-text-color-primary: var(--kn-ink) !important;          /* unchecked */
+  accent-color: var(--kn-accent) !important;
+}
+:focus-visible { outline-color: var(--kn-accent) !important; }
+/* highlighted rows in menus and panels (the extensions list turned purple on hover) */
+menupopup > menuitem[_moz-menuactive],
+menupopup > menu[_moz-menuactive],
+.subviewbutton:not([disabled]):hover,
+.subviewbutton:not([disabled])[_moz-menuactive] {
+  background-color: color-mix(in srgb, var(--kn-accent) 22%, var(--kn-panel)) !important;
+  color: var(--kn-text) !important;
 }
 
 /* ---- 2. one docked panel ----------------------------------------------------------------------------------------- */
@@ -77,6 +105,48 @@
   border-radius: 10px !important;
   overflow: hidden !important;
   border: 1px solid var(--kn-line) !important;
+}
+
+/* ---- 2b. horizontal mode: one row, no sidebar launcher ------------------------------------------------------------
+ * Checked in a real Firefox 160.0.1: the launcher is the element `sidebar-main` and `#tabbrowser-tabs[orient]` tells the layout.
+ * Tabs on the left, then back / forward / reload, the address pill, and the buttons: ONE row (the "washi" board), by turning the
+ * toolbox into a flex row. Menu bar, bookmarks bar and the like keep their own full-width rows. In a narrow window (< 920px)
+ * the stock two rows come back, because one row would leave no room for tabs. */
+:root:has(#tabbrowser-tabs[orient="horizontal"]) sidebar-main,
+:root:has(#tabbrowser-tabs[orient="horizontal"]) #sidebar-main,
+:root:has(#tabbrowser-tabs[orient="horizontal"]) #sidebar-launcher-splitter { display: none !important; }
+
+@media (min-width: 920px) {
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #navigator-toolbox {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) clamp(560px, 46vw, 800px) !important;
+    align-items: stretch !important;
+  }
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #navigator-toolbox > * { grid-column: 1 / -1 !important; }
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #navigator-toolbox > #toolbar-menubar { grid-row: 1 !important; }
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #navigator-toolbox > #TabsToolbar {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    min-width: 0 !important;
+  }
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #navigator-toolbox > #nav-bar {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    min-width: 0 !important;
+    padding-block: 0 !important;
+  }
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #TabsToolbar > .titlebar-spacer { display: none !important; }
+  /* the address pill takes whatever the buttons leave */
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #urlbar-container {
+    flex: 1 1 auto !important;
+    max-width: none !important;
+    margin-inline: 4px !important;
+  }
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #customizableui-special-spring1,
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #customizableui-special-spring2 { display: none !important; }
+  /* window buttons: Firefox puts them at the end of the tab strip, which is now the middle of the row; they belong at the far end */
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #TabsToolbar > .titlebar-buttonbox-container { display: none !important; }
+  :root:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #navigator-toolbox:not([tabs-hidden]) > #nav-bar > .titlebar-buttonbox-container { display: flex !important; }
 }
 
 /* ---- 3. tabs ----------------------------------------------------------------------------------------------------- */
@@ -114,31 +184,73 @@
 #vertical-tabs { background-color: var(--kn-bg) !important; }
 
 /* ---- 4. the address pill ---------------------------------------------------------------------------------------- */
-#urlbar-container {
+/* Firefox 160 (checked in a real 160.0.1): the field is #urlbar, its background is the child .urlbar-background (a class, not an id),
+ * the dropdown is a popover (.urlbarView) anchored to the input box. These variables are the ones its own CSS reads. */
+#urlbar,
+#searchbar {
+  --urlbar-background-color: var(--kn-surface);
+  --urlbar-background-color-focus: var(--kn-surface);
+  --urlbarview-border-radius: 16px;
+  --urlbar-background-box-shadow-open: 0 28px 70px rgba(0, 0, 0, 0.62), 0 0 0 1px var(--kn-panel-line);
+  --toolbar-field-border-color: var(--kn-line);
+  --toolbar-field-border-color-focus: var(--kn-accent);
+}
+#urlbar > .urlbar-background { border-radius: 14px !important; }
+#urlbar:hover:not([focused]) > .urlbar-background { border-color: var(--kn-line-strong) !important; }
+#urlbar-input { color: var(--kn-text) !important; }
+/* vertical tabs: the pill sits centred in the full-width bar (horizontal mode: see 2b, it fills the row) */
+:root:has(#tabbrowser-tabs[orient="vertical"]) #urlbar-container {
   flex: 0 1 420px !important;
   min-width: 200px !important;
   margin-inline: auto !important;
 }
-#urlbar-background {
-  border-radius: 14px !important;
-  background-color: var(--kn-surface) !important;
-  border: 1px solid var(--kn-line) !important;
-  box-shadow: none !important;
-}
-#urlbar:hover > #urlbar-background { border-color: var(--kn-line-strong) !important; }
-#urlbar[focused="true"] > #urlbar-background {
-  border-color: var(--kn-accent) !important;
-  box-shadow: 0 0 0 3px var(--kn-glow) !important;
-}
-#urlbar-input { color: var(--kn-text) !important; }
 
-/* ---- 5. the dropdown as a card ---------------------------------------------------------------------------------- */
-#urlbar[breakout][breakout-extend] > #urlbar-background {
-  border-radius: 14px !important;
-  background-color: var(--kn-panel) !important;
-  border: 1px solid var(--kn-panel-line) !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45) !important;
+/* ---- 5. the launcher: the address bar detaches into a centred card -------------------------------------------------
+ * The "makimono" board: press Ctrl+L (or click the pill) and the whole address bar lifts out of the toolbar into a wide card in
+ * the middle of the window; the page dims behind it; results are rows under it; Esc or a click outside puts it away.
+ * Only position, size and look change: the results, keywords (% ^ * ?), search modes and engines are Firefox's own.
+ * The 640px and 12vh below are the card's width and distance from the top. */
+/* WHEN the card opens: while results are open ([popover-open]), while you type ([usertyping] with focus), or when you asked for it with
+ * Ctrl+L / Ctrl+K / Alt+D or a click on the pill (the script layer sets the window attribute kurenai-launch for those and clears it
+ * when the bar loses focus). Firefox ALSO focuses the address bar by itself on every new tab: that alone must not open the card,
+ * or it would dim your start page. Without the script layer the card opens on results and typing only. */
+/* Checked in 160: the page's stack (#tabbrowser-tabbox, z-index 2) paints over the toolbar, which would hide the lifted input line.
+ * Raising the toolbox above it is what makes the card show whole. */
+#navigator-toolbox { position: relative !important; z-index: 100 !important; }
+#urlbar:is([popover-open], [focused][usertyping], :root[kurenai-launch] #urlbar[focused]) {
+  position: fixed !important;
+  top: 12vh !important;
+  left: max(16px, calc(50vw - 320px)) !important;
+  width: min(640px, calc(100vw - 32px)) !important;
+  z-index: 10 !important;
+  --urlbar-height: 54px;
 }
+/* the pill's place in the toolbar keeps a faint outline so the bar does not look broken */
+#urlbar-container { position: relative; }
+#urlbar-container:has(#urlbar:is([popover-open], [focused][usertyping], :root[kurenai-launch] #urlbar[focused]))::after {
+  content: "";
+  position: absolute;
+  inset: 6px 0;
+  border: 1px dashed var(--kn-line);
+  border-radius: 14px;
+  pointer-events: none;
+}
+/* dim everything behind the card (clicks go through it, so clicking outside still closes the card) */
+#urlbar:is([popover-open], [focused][usertyping], :root[kurenai-launch] #urlbar[focused])::before {
+  content: "";
+  position: absolute;   /* #urlbar has contain: layout, so fixed would be relative to it too: grow the box past every window edge */
+  inset: -200vmax;
+  z-index: -1;
+  background: rgba(10, 8, 8, 0.55);
+  pointer-events: none;
+}
+#urlbar:is([popover-open], [focused][usertyping], :root[kurenai-launch] #urlbar[focused]) > .urlbar-background {
+  border-radius: 16px !important;
+  border: 1px solid var(--kn-panel-line) !important;
+}
+#urlbar:is([popover-open], [focused][usertyping], :root[kurenai-launch] #urlbar[focused]) #urlbar-input { font-size: 16px !important; }
+
+/* results */
 .urlbarView-row { border-radius: 10px !important; }
 .urlbarView-row[selected],
 .urlbarView-row-inner[selected] {
@@ -149,32 +261,50 @@
   background-repeat: no-repeat !important;
 }
 .urlbarView-title { color: var(--kn-text) !important; }
-.urlbarView-url { color: var(--kn-accent-text) !important; }
+.urlbarView-title strong,
+.urlbarView-title b { color: var(--kn-accent) !important; font-weight: 600 !important; }
+.urlbarView-url { color: var(--kn-muted) !important; }
 .urlbarView-action { color: var(--kn-muted) !important; }
 
 /* ---- HIDE STATES (set by the optional script as the attribute kurenai-hide on the window: none | addr | tabs | both) --
- * addr / both : the address strip shrinks to a 6px hot edge; it comes back when the pointer touches the top edge or
- *               when the address bar has focus (Ctrl+L). Hidden means out of the way, not unreachable.
- * tabs / both : the tab strip is collapsed (the sidebar's launcher buttons, if you use them, stay).
- */
-:root[kurenai-hide="addr"] #nav-bar,
-:root[kurenai-hide="both"] #nav-bar {
-  max-height: 6px !important;
-  min-height: 0 !important;
-  padding-block: 0 !important;
-  overflow: hidden !important;
-  opacity: 0 !important;
+ * addr / both : the nav bar (buttons + address pill) leaves the layout completely, so the page (and, in horizontal mode, the
+ *               tab strip) gets the space. It waits just above the top edge with a 4px hot strip: touch the top edge and it
+ *               slides down OVER the page. Ctrl+L does NOT slide it down: the address bar lifts out as the centred card.
+ *               Uses `top`, not a transform, because a transform would make the card position itself inside the hidden bar.
+ * tabs / both : horizontal: the tab strip is collapsed. Vertical: the script switches Firefox's own sidebar to
+ *               "hide-sidebar" (the column is freed) and puts the old setting back when you show the tabs again.
+ * Not applied while customizing the toolbar. */
+:root[kurenai-hide="addr"]:not([customizing]) #nav-bar,
+:root[kurenai-hide="both"]:not([customizing]) #nav-bar {
+  position: fixed !important;
+  top: -44px !important;   /* the bar is 44px tall: 4px of it stay as the hot strip */
+  left: 0 !important;
+  right: 0 !important;
+  width: auto !important;
+  z-index: 1000 !important;
+  background-color: var(--kn-bg) !important;
+  border-radius: 0 0 14px 14px !important;
+  transition: top 140ms ease !important;
 }
-:root[kurenai-hide="addr"] #nav-bar:hover,
-:root[kurenai-hide="addr"] #nav-bar:focus-within,
-:root[kurenai-hide="both"] #nav-bar:hover,
-:root[kurenai-hide="both"] #nav-bar:focus-within {
-  max-height: 60px !important;
-  padding-block: 4px !important;
-  overflow: visible !important;
-  opacity: 1 !important;
+:root[kurenai-hide="addr"]:not([customizing]) #nav-bar:is(:hover, :has([open="true"])),
+:root[kurenai-hide="both"]:not([customizing]) #nav-bar:is(:hover, :has([open="true"])),
+:root[kurenai-hide="addr"]:not([customizing]) #nav-bar:focus-within:not(:has(#urlbar:is([focused], [popover-open]))),
+:root[kurenai-hide="both"]:not([customizing]) #nav-bar:focus-within:not(:has(#urlbar:is([focused], [popover-open]))) {
+  top: 0 !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45) !important;
 }
 :root[kurenai-hide="tabs"] #TabsToolbar,
 :root[kurenai-hide="both"] #TabsToolbar { visibility: collapse !important; }
 :root[kurenai-hide="tabs"] #vertical-tabs,
 :root[kurenai-hide="both"] #vertical-tabs { display: none !important; }
+/* horizontal, address bar hidden: the tab strip takes the whole row */
+@media (min-width: 920px) {
+  :root:is([kurenai-hide="addr"], [kurenai-hide="both"]):has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #navigator-toolbox {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+/* horizontal, tabs hidden: the nav bar takes the whole row */
+@media (min-width: 920px) {
+  :root[kurenai-hide="tabs"]:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #navigator-toolbox > #nav-bar { grid-column: 1 / -1 !important; }
+  :root[kurenai-hide="tabs"]:has(#tabbrowser-tabs[orient="horizontal"]):not([customizing]) #navigator-toolbox > #TabsToolbar { display: none !important; }
+}

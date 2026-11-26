@@ -9,15 +9,21 @@
  * What it does (and nothing else):
  *   - keeps one preference, kurenai.hide (none | addr | tabs | both), and mirrors it onto the window as the attribute
  *     kurenai-hide, which the stylesheet (chrome/kurenai/kurenai.css) reacts to;
+ *   - while the tabs are hidden AND Firefox's vertical tabs are on, switches Firefox's own sidebar setting
+ *     (sidebar.visibility) to "hide-sidebar" so the rail's column is freed, and puts the old value back afterwards;
  *   - adds one toolbar button, "Show and hide", with a small menu (hide the address bar, the tabs, both, or neither,
  *     and a vertical-tabs switch);
  *   - Ctrl+Alt+H cycles through the four hide states, so you can always get back even when every bar is hidden;
  *   - Ctrl+Alt+V turns Firefox's vertical tabs on or off (it sets the preference sidebar.verticalTabs);
- *   - Ctrl+L while the address bar already has focus closes it again, so Ctrl+L toggles the address card.
+ *   - Ctrl+L while the address card is open closes it again, so Ctrl+L toggles the card; Ctrl+L / Ctrl+K / Alt+D / a click on the pill
+ *     mark the window (attribute kurenai-launch) so the stylesheet opens the card; Firefox's own auto-focus on a new tab does not;
+ *   - when the preference kurenai.newtab holds a file:// address (written by `home on`), makes it the page new tabs open
+ *     (AboutNewTab.newTabURL), so no add-on is needed for the start page.
  * It never reads a page, a password or the network. Remove it with: kurenai-ctl theme extra firefox script off
  *
- * Firefox's internal names used here were taken from Firefox's source but have NOT been tried in Firefox 160:
- * every call is wrapped so a missing name disables that one feature instead of breaking the window.
+ * Run on Firefox 160.0.1 (test rig and your own video): the button, the menu, Ctrl+L, the vertical-tabs switch and the
+ * sidebar.visibility save/restore work (the value "hide-sidebar" frees the rail's column and the old value comes back).
+ * Every call is wrapped, so a missing name disables that one feature instead of breaking the window.
  */
 (function () {
   "use strict";
@@ -25,6 +31,8 @@
 
   var HIDE_PREF = "kurenai.hide";
   var VERTICAL_PREF = "sidebar.verticalTabs";
+  var VIS_PREF = "sidebar.visibility";
+  var SAVED_VIS_PREF = "kurenai.saved-sidebar-visibility";   // what sidebar.visibility was before we hid the rail
   var STATES = ["none", "addr", "tabs", "both"];
   var BUTTON_ID = "kurenai-showhide-button";
   var MENU_ID = "kurenai-showhide-menu";
@@ -49,6 +57,28 @@
   }
   function setVertical(on) {
     try { Services.prefs.setBoolPref(VERTICAL_PREF, !!on); } catch (e) { log("could not set " + VERTICAL_PREF, e); }
+  }
+  // Frees the rail's column when the tabs are hidden in vertical mode, and gives the old setting back otherwise.
+  function syncSidebar() {
+    try {
+      var hide = getHide();
+      var wantHidden = (hide === "tabs" || hide === "both") && getVertical();
+      var P = Services.prefs;
+      var cur = P.prefHasUserValue(VIS_PREF) ? P.getStringPref(VIS_PREF, "") : "";
+      if (wantHidden) {
+        if (cur !== "hide-sidebar") {
+          if (!P.prefHasUserValue(SAVED_VIS_PREF)) P.setStringPref(SAVED_VIS_PREF, cur || "__default__");
+          P.setStringPref(VIS_PREF, "hide-sidebar");
+        }
+      } else if (P.prefHasUserValue(SAVED_VIS_PREF)) {
+        var saved = P.getStringPref(SAVED_VIS_PREF, "");
+        if (cur === "hide-sidebar") {
+          if (saved === "__default__" || saved === "") P.clearUserPref(VIS_PREF);
+          else P.setStringPref(VIS_PREF, saved);
+        }
+        P.clearUserPref(SAVED_VIS_PREF);
+      }
+    } catch (e) { log("could not switch the sidebar", e); }
   }
   function cycleHide() { setHide(STATES[(STATES.indexOf(getHide()) + 1) % STATES.length]); }
 
@@ -81,8 +111,11 @@
       var cur = getHide();
       Array.prototype.forEach.call(m.children, function (c) {
         var s = c.getAttribute && c.getAttribute("kurenai-state");
-        if (s) c.setAttribute("checked", String(s === cur));
-        if (c.getAttribute && c.getAttribute("kurenai-vertical")) c.setAttribute("checked", String(getVertical()));
+        // XUL reads "checked" as present or absent; writing the string "false" left the first tick stuck in the first run
+        var on = s ? (s === cur) : (c.getAttribute && c.getAttribute("kurenai-vertical") ? getVertical() : null);
+        if (on === null) return;
+        if (on) c.setAttribute("checked", "true"); else c.removeAttribute("checked");
+        try { c.checked = on; } catch (e) { /* attribute is enough */ }
       });
     });
     set.appendChild(m);
@@ -119,32 +152,89 @@
     } catch (e) { log("could not create the toolbar button", e); }
   }
 
-  // ---- keys ---------------------------------------------------------------------------------------------------------------
+  // ---- the launcher card: when does it open? --------------------------------------------------------------------------------
+  // Firefox focuses the address bar by itself on every new tab. That must not open the card (it would dim the start page), so the
+  // stylesheet opens the card only for results / typing, or when this script marks the window with kurenai-launch because YOU asked
+  // for it: Ctrl+L, Ctrl+K, Alt+D, or a click on the pill. The mark is cleared when the address bar loses focus.
+  var LAUNCH_ATTR = "kurenai-launch";
+  function root() { return document.documentElement; }
+  function launchOn() { return root().hasAttribute(LAUNCH_ATTR); }
+  function setLaunch(on) { if (on) root().setAttribute(LAUNCH_ATTR, "true"); else root().removeAttribute(LAUNCH_ATTR); }
+  function urlbarEl() { return document.getElementById("urlbar"); }
+  function urlbarFocused() { var u = urlbarEl(); return !!(u && u.hasAttribute("focused")); }
+  function viewOpen() { try { return !!window.gURLBar.view.isOpen; } catch (e) { return false; } }
+  function cardOpen() {
+    var u = urlbarEl();
+    return !!(u && (u.hasAttribute("popover-open") || (u.hasAttribute("focused") && (u.hasAttribute("usertyping") || launchOn()))));
+  }
   function closeCard() {
+    setLaunch(false);
     try { window.gURLBar.view.close(); } catch (e) { /* ignore */ }
     try { window.gURLBar.handleRevert(); } catch (e) { /* ignore */ }
     try { window.gURLBar.blur(); } catch (e) { /* ignore */ }
     try { window.gBrowser.selectedBrowser.focus(); } catch (e) { /* ignore */ }
   }
   function onKey(e) {
-    if (!e.ctrlKey || e.metaKey) return;
+    if (e.metaKey) return;
     var k = (e.key || "").toLowerCase();
-    if (e.altKey && !e.shiftKey && k === "h") { e.preventDefault(); e.stopPropagation(); cycleHide(); return; }
-    if (e.altKey && !e.shiftKey && k === "v") { e.preventDefault(); e.stopPropagation(); setVertical(!getVertical()); return; }
-    if (!e.altKey && !e.shiftKey && k === "l") {
-      var focused = false;
-      try { focused = !!window.gURLBar.focused; } catch (err) { /* ignore */ }
-      if (focused) { e.preventDefault(); e.stopPropagation(); closeCard(); }
+    if (e.ctrlKey && e.altKey && !e.shiftKey && k === "h") { e.preventDefault(); e.stopPropagation(); cycleHide(); return; }
+    if (e.ctrlKey && e.altKey && !e.shiftKey && k === "v") { e.preventDefault(); e.stopPropagation(); setVertical(!getVertical()); return; }
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && k === "l") {
+      if (urlbarFocused() && cardOpen()) { e.preventDefault(); e.stopPropagation(); closeCard(); }   // Ctrl+L toggles the card
+      else setLaunch(true);                                                                           // Firefox then focuses the bar
+      return;
     }
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && k === "k") { setLaunch(true); return; }
+    if (e.altKey && !e.ctrlKey && !e.shiftKey && k === "d") { setLaunch(true); return; }
+    // Esc: Firefox closes the results first; a second Esc puts the card away
+    if (k === "escape" && !e.ctrlKey && !e.altKey && !e.shiftKey && launchOn() && urlbarFocused() && !viewOpen()) {
+      e.preventDefault(); e.stopPropagation(); closeCard();
+    }
+  }
+  function onMouseDown(e) {
+    try { if (e.button === 0 && e.target && e.target.closest && e.target.closest("#urlbar")) setLaunch(true); } catch (err) { /* ignore */ }
+  }
+  function onFocusOut(e) {
+    try {
+      var u = urlbarEl();
+      if (u && e.target && u.contains(e.target) && !(e.relatedTarget && u.contains(e.relatedTarget))) setLaunch(false);
+    } catch (err) { /* ignore */ }
+  }
+
+  // ---- new tab page ---------------------------------------------------------------------------------------------------------
+  // `kurenai-ctl theme extra firefox home on` writes the preference kurenai.newtab (a file:// address). Firefox's own
+  // AboutNewTab.newTabURL is what Ctrl+T / the + button open, so the start page loads straight from the file, with its own
+  // scripts working (an add-on such as New Tab Override serves a copy as an extension page, where inline scripts are blocked).
+  var NEWTAB_PREF = "kurenai.newtab";
+  var ourNewTab = "";
+  function applyNewTab() {
+    try {
+      var url = Services.prefs.getStringPref(NEWTAB_PREF, "");
+      var mod = ChromeUtils.importESModule("resource:///modules/AboutNewTab.sys.mjs");
+      if (url && /^file:\/\//.test(url)) {
+        if (mod.AboutNewTab.newTabURL !== url) mod.AboutNewTab.newTabURL = url;
+        ourNewTab = url;
+      } else if (ourNewTab && mod.AboutNewTab.newTabURL === ourNewTab) {
+        mod.AboutNewTab.resetNewTabURL(); ourNewTab = "";
+      }
+    } catch (e) { log("could not set the new tab page", e); }
   }
 
   // ---- start up ---------------------------------------------------------------------------------------------------------
-  function apply() { document.documentElement.setAttribute("kurenai-hide", getHide()); }
+  function apply() { document.documentElement.setAttribute("kurenai-hide", getHide()); syncSidebar(); applyNewTab(); }
   var observer = { observe: function () { apply(); } };
   try { Services.prefs.addObserver(HIDE_PREF, observer); } catch (e) { log("could not watch " + HIDE_PREF, e); }
+  try { Services.prefs.addObserver(VERTICAL_PREF, observer); } catch (e) { log("could not watch " + VERTICAL_PREF, e); }
+  try { Services.prefs.addObserver(NEWTAB_PREF, observer); } catch (e) { log("could not watch " + NEWTAB_PREF, e); }
   window.addEventListener("keydown", onKey, true);
+  window.addEventListener("mousedown", onMouseDown, true);
+  window.addEventListener("focusout", onFocusOut, true);
   window.addEventListener("unload", function () {
+    try { Services.prefs.removeObserver(NEWTAB_PREF, observer); } catch (e) { /* ignore */ }
+    window.removeEventListener("mousedown", onMouseDown, true);
+    window.removeEventListener("focusout", onFocusOut, true);
     try { Services.prefs.removeObserver(HIDE_PREF, observer); } catch (e) { /* ignore */ }
+    try { Services.prefs.removeObserver(VERTICAL_PREF, observer); } catch (e) { /* ignore */ }
     window.removeEventListener("keydown", onKey, true);
   }, { once: true });
   apply();

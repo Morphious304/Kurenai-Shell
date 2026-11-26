@@ -8,6 +8,8 @@ window.KURENAI_START = {
     { glyph: "本", label: "Arch Wiki", url: "https://wiki.archlinux.org/" },
     { glyph: "碼", label: "GitHub", url: "https://github.com/" },
     { glyph: "窓", label: "Hyprland", url: "https://github.com/hyprwm/Hyprland" },
-    { glyph: "殻", label: "Quickshell", url: "https://quickshell.org/" }
+    { glyph: "殻", label: "Quickshell", url: "https://quickshell.org/" },
+    { glyph: "絵", label: "unixporn", url: "https://www.reddit.com/r/unixporn/" },
+    { glyph: "音", label: "Music", url: "https://music.youtube.com/" }
   ]
 };

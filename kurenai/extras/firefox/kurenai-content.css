@@ -12,3 +12,16 @@
   }
   html, body { background-color: var(--kn-bg) !important; color: var(--kn-text) !important; }
 }
+
+/* Firefox's other own pages (error pages, settings, about:*): only the accent, so buttons and focus rings are pink and not
+ * Firefox's purple. --color-accent-primary is Firefox's accent variable (checked in browser-shared.css); whether these pages
+ * read it is unchecked: the error page's "Try Again" button was purple in the first run. */
+@-moz-document url-prefix("about:") {
+  :root {
+    --color-accent-primary: var(--kn-accent) !important;
+    --focus-outline-color: var(--kn-accent) !important;
+    --button-background-color-primary: var(--kn-accent) !important;
+    --button-text-color-primary: var(--kn-ink) !important;
+    accent-color: var(--kn-accent) !important;
+  }
+}

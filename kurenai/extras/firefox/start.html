@@ -19,6 +19,7 @@
   </label>
 </form>
 <nav class="links" id="links"></nav>
+<p class="hint">Ctrl+L address · Ctrl+T new tab · Ctrl+Tab next tab</p>
 <script src="start-links.js"></script>
 <script>
 (function () {
@@ -52,7 +53,7 @@
     a.appendChild(i); a.appendChild(s); box.appendChild(a);
   });
   var p = document.getElementById("petals"), html = "";
-  for (var n = 0; n < 14; n++) {
+  for (var n = 0; n < 18; n++) {
     var d = 15 + (n * 7) % 11;
     html += '<span class="petal" style="--x:' + ((n * 37 + 11) % 96) + '%;--d:' + d + 's;--w:-' + ((n * 5) % d) + 's;--r:' + ((n * 53) % 360) + 'deg;--y:' + ((n * 29) % 70 + 5) + '"></span>';
   }
