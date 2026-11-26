@@ -9,6 +9,7 @@ import Quickshell.Io
 //   qs -c kurenai ipc call notifications toggle
 //   qs -c kurenai ipc call notifications dnd          (toggle Do Not Disturb)
 //   qs -c kurenai ipc call notifications clear
+//   qs -c kurenai ipc call quicksettings toggle
 //   qs -c kurenai ipc call shell closeAll
 //   qs -c kurenai ipc show                            (lists every target and function)
 Scope {
@@ -26,6 +27,13 @@ Scope {
         function close(): void { UiState.notificationsOpen = false; }
         function dnd(): void { NotificationStore.toggleDnd(); }
         function clear(): void { NotificationStore.clearAll(); }
+    }
+
+    IpcHandler {
+        target: "quicksettings"
+        function toggle(): void { UiState.toggleQuickSettings(); }
+        function open(): void { UiState.closeAll(); UiState.quickSettingsOpen = true; }
+        function close(): void { UiState.quickSettingsOpen = false; }
     }
 
     IpcHandler {

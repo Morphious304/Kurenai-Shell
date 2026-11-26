@@ -4,6 +4,8 @@ singleton UiState 1.0 UiState.qml
 singleton Compositor 1.0 Compositor.qml
 singleton NotificationStore 1.0 NotificationStore.qml
 singleton Apps 1.0 Apps.qml
+singleton Audio 1.0 Audio.qml
+singleton System 1.0 System.qml
 BarItem 1.0 BarItem.qml
 Divider 1.0 Divider.qml
 Emblem 1.0 Emblem.qml
@@ -14,9 +16,18 @@ Tray 1.0 Tray.qml
 SysStatus 1.0 SysStatus.qml
 Bar 1.0 Bar.qml
 Surface 1.0 Surface.qml
+DockShape 1.0 DockShape.qml
 PanelOverlay 1.0 PanelOverlay.qml
 NotificationCard 1.0 NotificationCard.qml
 NotificationPopups 1.0 NotificationPopups.qml
 NotificationCenter 1.0 NotificationCenter.qml
 Launcher 1.0 Launcher.qml
 Ipc 1.0 Ipc.qml
+PanelFrame 1.0 PanelFrame.qml
+Btn 1.0 Btn.qml
+KToggle 1.0 KToggle.qml
+KSlider 1.0 KSlider.qml
+QsSection 1.0 QsSection.qml
+ListBox 1.0 ListBox.qml
+LevelRow 1.0 LevelRow.qml
+QuickSettings 1.0 QuickSettings.qml

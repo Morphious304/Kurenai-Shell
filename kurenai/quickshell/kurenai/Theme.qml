@@ -50,6 +50,7 @@ Singleton {
     readonly property int centerWidth: 380
     readonly property int launcherWidth: 560
     readonly property int launcherRowHeight: 44
+    readonly property int qsWidth: 380
 
     // ---- motion -----------------------------------------------------------
     readonly property int durFast: 120
@@ -93,6 +94,16 @@ Singleton {
         search:   "\uf002",
         star:     "\uf005",
         starO:    "\uf006",
-        clock:    "\uf017"
+        clock:    "\uf017",
+        lock:     "\uf023",
+        bluetooth:"\uf293",
+        coffee:   "\uf0f4",
+        moon:     "\uf186",
+        sun:      "\uf185",
+        chevDown: "\uf078",
+        chevUp:   "\uf077",
+        check:    "\uf00c",
+        cog:      "\uf013",
+        headphones:"\uf025"
     })
 }

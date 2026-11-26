@@ -1,8 +1,7 @@
 import Quickshell
 
 // KURENAI shell entry point. Run with:  qs -c kurenai   (managed start: kurenai-ctl start)
-// Phase 2: bar + notification popups/centre + launcher + IPC.
-// Phase 3 adds the quick-settings panel next to these.
+// Phase 3: bar, notification popups/centre, launcher, quick settings, IPC.
 ShellRoot {
     // one bar per screen
     Variants {
@@ -14,6 +13,7 @@ ShellRoot {
     NotificationPopups {}
     NotificationCenter {}
     Launcher {}
+    QuickSettings {}
 
     Ipc {}
 }

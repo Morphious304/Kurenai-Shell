@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
 import Quickshell.Networking
 
@@ -7,31 +6,12 @@ import Quickshell.Networking
 //   audio   -> Quickshell.Services.Pipewire
 //   network -> Quickshell.Networking (NetworkManager backend)
 //   battery -> Quickshell.Services.UPower
-// Click any of them to toggle quick settings. Wheel over volume changes it.
+// Audio state lives in Audio.qml (shared with the quick-settings panel).
+// Click any indicator to toggle quick settings. Wheel over volume changes it.
 // Middle-click volume / mic toggles mute.
 Row {
     id: root
     spacing: Theme.s1
-
-    // ---------------------------------------------------------------- audio
-    readonly property var sink: Pipewire.defaultAudioSink
-    readonly property var micNode: Pipewire.defaultAudioSource
-
-    // Pipewire nodes only expose live values while tracked.
-    PwObjectTracker { objects: [root.sink, root.micNode].filter(o => !!o) }
-
-    readonly property bool hasSink: !!sink && !!sink.audio
-    readonly property real volume: hasSink ? sink.audio.volume : 0
-    readonly property bool sinkMuted: hasSink ? sink.audio.muted : true
-
-    readonly property bool hasMic: !!micNode && !!micNode.audio
-    readonly property bool micMuted: hasMic ? micNode.audio.muted : true
-
-    function setVolume(v) {
-        if (hasSink) sink.audio.volume = Math.max(0, Math.min(1, v));
-    }
-    function toggleSinkMute() { if (hasSink) sink.audio.muted = !sink.audio.muted; }
-    function toggleMicMute()  { if (hasMic)  micNode.audio.muted = !micNode.audio.muted; }
 
     // -------------------------------------------------------------- network
     readonly property var netDevices: Networking.devices ? Networking.devices.values : []
@@ -62,22 +42,36 @@ Row {
         batPct <= 0.30 ? Theme.amber : Theme.text2
 
     // ----------------------------------------------------------------- UI
+    // visible reminders of things that keep running until you switch them off
     BarItem {
-        visible: root.hasMic
-        icon: root.micMuted ? Theme.icons.micOff : Theme.icons.mic
-        iconColor: root.micMuted ? Theme.muted : Theme.text
-        onClicked: m => m.button === Qt.MiddleButton ? root.toggleMicMute() : UiState.toggleQuickSettings()
+        visible: System.idleInhibit
+        icon: Theme.icons.coffee
+        iconColor: Theme.amber
+        onClicked: UiState.toggleQuickSettings()
+    }
+    BarItem {
+        visible: System.nightLight === "on"
+        icon: Theme.icons.moon
+        iconColor: Theme.amber
+        onClicked: UiState.toggleQuickSettings()
     }
 
     BarItem {
-        icon: root.sinkMuted || root.volume <= 0 ? Theme.icons.volOff
-            : root.volume < 0.5 ? Theme.icons.volDown : Theme.icons.volUp
-        iconColor: root.sinkMuted ? Theme.muted : Theme.text
-        label: root.sinkMuted ? "muted" : Math.round(root.volume * 100) + "%"
-        labelColor: root.sinkMuted ? Theme.muted : Theme.text
+        visible: Audio.hasSource
+        icon: Audio.micMuted ? Theme.icons.micOff : Theme.icons.mic
+        iconColor: Audio.micMuted ? Theme.muted : Theme.text
+        onClicked: m => m.button === Qt.MiddleButton ? Audio.toggleMicMute() : UiState.toggleQuickSettings()
+    }
+
+    BarItem {
+        icon: Audio.muted || Audio.volume <= 0 ? Theme.icons.volOff
+            : Audio.volume < 0.5 ? Theme.icons.volDown : Theme.icons.volUp
+        iconColor: Audio.muted ? Theme.muted : Theme.text
+        label: Audio.muted ? "muted" : Math.round(Audio.volume * 100) + "%"
+        labelColor: Audio.muted ? Theme.muted : Theme.text
         labelFamily: Theme.fontMono
-        onClicked: m => m.button === Qt.MiddleButton ? root.toggleSinkMute() : UiState.toggleQuickSettings()
-        onScrolled: d => root.setVolume(root.volume + (d > 0 ? 0.05 : -0.05))
+        onClicked: m => m.button === Qt.MiddleButton ? Audio.toggleMute() : UiState.toggleQuickSettings()
+        onScrolled: d => Audio.setVolume(Audio.volume + (d > 0 ? 0.05 : -0.05))
     }
 
     BarItem {

@@ -1,7 +1,8 @@
-# KURENAI, phase 2
+# KURENAI, phase 3
 
 Hyprland (Lua config, 0.55+) theme + Quickshell shell: top bar, notification popups and centre,
-application launcher, IPC. Phase 3 adds quick settings; phase 4 the optional panels.
+docked application launcher, quick settings, IPC. Phase 4 = optional panels (media, calendar, OSD,
+power menu, clipboard).
 
 ```
 install.sh                       copies files into place after a backup; starts nothing, edits nothing
@@ -15,6 +16,11 @@ quickshell/kurenai/              run with:  qs -c kurenai
   NotificationStore.qml          the one notification state (server, history, popups, DND)
   NotificationCard/Popups/Center.qml
   Apps.qml Launcher.qml          desktop-entry index, search, favourites, recents / the launcher UI
+  DockShape.qml PanelFrame.qml   panel hanging from the bar (concave fillets) / floating-or-docked panel body
+  Audio.qml                      the one audio state (bar + panel): volume, mute, default sink/source, device lists
+  System.qml                     brightness (brightnessctl), night light (hyprsunset), keep-awake flag, tool detection
+  QuickSettings.qml              the panel: battery + power profile, sound, brightness, Wi-Fi, Bluetooth, toggles, shortcuts
+  Btn.qml KToggle.qml KSlider.qml QsSection.qml ListBox.qml LevelRow.qml   shared, keyboard-accessible controls
   Surface.qml PanelOverlay.qml   shared panel look / shared popover window (focus, click-outside, Esc)
   Ipc.qml                        qs ipc targets used by the keybinds
   Bar.qml Workspaces.qml WindowTitle.qml SysStatus.qml Tray.qml Clock.qml BarItem.qml Divider.qml Emblem.qml
@@ -24,6 +30,7 @@ quickshell/kurenai/              run with:  qs -c kurenai
 ```
 qs -c kurenai ipc call launcher toggle|open|close
 qs -c kurenai ipc call notifications toggle|open|close|dnd|clear
+qs -c kurenai ipc call quicksettings toggle|open|close
 qs -c kurenai ipc call shell closeAll
 ```
 
@@ -35,3 +42,19 @@ qs -c kurenai ipc call shell closeAll
 ## Local data
 `~/.local/share/kurenai/launcher.json` holds favourite/recent desktop-entry ids only. Reset: `kurenai-ctl reset-launcher`.
 Notification history lives in memory only (it is cleared when Quickshell stops).
+
+## Quick settings: what it needs
+| Control | Uses | If missing |
+|---|---|---|
+| Volume, mic, device pickers | PipeWire (native) | row dims, says why |
+| Brightness | `brightnessctl` | row shows an install hint |
+| Wi-Fi on/off, saved networks | NetworkManager (native) | "No Wi-Fi adapter" |
+| New Wi-Fi networks | `nm-connection-editor` (opened, never handled in the shell) | row disabled, says to use nmtui/nmcli |
+| Bluetooth on/off, connect/disconnect paired devices | BlueZ (native) | "No adapter" |
+| Power profiles | `power-profiles-daemon` | section hidden |
+| Night light | `hyprsunset` | tile hidden |
+| Keep awake | Wayland idle-inhibit (compositor) | n/a |
+| Sound / Network / Bluetooth shortcuts | pwvucontrol or pavucontrol / nm-connection-editor / blueman-manager or overskride | shortcut hidden |
+
+Passwords are never typed into, stored by, or passed through the shell.
+Keyboard: Tab moves between controls (teal ring), Space/Enter activates, Left/Right moves sliders, Esc closes.

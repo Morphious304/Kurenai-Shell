@@ -18,6 +18,13 @@ PanelWindow {
     color: Theme.bg
     WlrLayershell.namespace: "kurenai-bar"
 
+    // "Keep awake" (quick settings). Attached to the bar because an inhibitor only counts while its
+    // window is visible; one per bar is harmless on multi-monitor setups.
+    IdleInhibitor {
+        window: bar
+        enabled: System.idleInhibit
+    }
+
     readonly property var hyprMonitor: Hyprland.monitorFor(screen)
     readonly property bool wide: width >= 1100
 

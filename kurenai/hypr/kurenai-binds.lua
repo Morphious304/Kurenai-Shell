@@ -17,6 +17,7 @@ local binds = {
   { "SUPER + SHIFT + SPACE", "command -v rofi >/dev/null && " .. ROFI },
   { "SUPER + N",             QS .. "notifications toggle" },
   { "SUPER + SHIFT + N",     QS .. "notifications dnd" },
+  { "SUPER + A",             QS .. "quicksettings toggle" },
 }
 
 for _, b in ipairs(binds) do

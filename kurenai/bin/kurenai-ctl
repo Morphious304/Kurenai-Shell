@@ -354,6 +354,23 @@ cmd_validate() {
     esac
   fi
 
+  echo "Quick settings (each missing optional tool just hides or explains that control)"
+  if have brightnessctl; then
+    local bl; bl="$(brightnessctl -m -c backlight 2>/dev/null | head -1 | cut -d, -f1,4)"
+    [ -n "$bl" ] && ok "brightnessctl, backlight device: $bl" \
+      || warn "brightnessctl installed but no backlight device found (external-only? see: brightnessctl -l)"
+  else warn "brightnessctl missing: brightness slider shows an install hint (sudo pacman -S brightnessctl)"; fi
+  if systemctl cat power-profiles-daemon.service >/dev/null 2>&1; then
+    systemctl is-active --quiet power-profiles-daemon && ok "power-profiles-daemon active" \
+      || warn "power-profiles-daemon installed but not running (it is D-Bus activated; check: powerprofilesctl get)"
+  else warn "power-profiles-daemon not installed: no power-profile switch (if you use TLP, this is expected)"; fi
+  systemctl is-active --quiet bluetooth && ok "bluetooth.service active" \
+    || warn "bluetooth.service not active: the Bluetooth section will say there is no adapter"
+  local t
+  for t in hyprsunset pavucontrol pwvucontrol nm-connection-editor blueman-manager; do
+    have "$t" && ok "optional: $t" || printf '  [ -- ] optional, not installed: %s\n' "$t"
+  done
+
   echo "Launcher fallback"
   have rofi && ok "rofi installed: $(command -v rofi)" || warn "rofi not found: the launcher fallback will not work"
   [ -f "$STATE/launcher.json" ] && ok "launcher.json present" || warn "launcher.json missing (the installer creates it)"

@@ -37,4 +37,17 @@ Singleton {
         }
         return list.length > 0 ? list[0] : null;
     }
+
+    // True while the focused workspace has a fullscreen window. A fullscreen window is drawn above the
+    // bar (layer "top"), so anything that normally attaches to the bar has to float instead.
+    readonly property bool fullscreen: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.hasFullscreen : false
+
+    // hasFullscreen only changes when the workspace object is refreshed, so nudge it on the
+    // `fullscreen` event (see Hyprland wiki: IPC). Cheap: one request per fullscreen toggle.
+    Connections {
+        target: Hyprland
+        function onRawEvent(event) {
+            if (event.name === "fullscreen") Hyprland.refreshWorkspaces();
+        }
+    }
 }

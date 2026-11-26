@@ -19,9 +19,17 @@ TS="$(date +%Y%m%d-%H%M%S)"
 REPLACED="$STATE/replaced-$TS"
 
 echo "2/5 Installing Hyprland modules (theme, binds, autostart)..."
-for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua; do
-  if [ -e "$CFG/hypr/$f" ]; then mkdir -p "$REPLACED"; mv "$CFG/hypr/$f" "$REPLACED/"; fi
-  cp "$SRC/hypr/$f" "$CFG/hypr/$f"
+# kurenai.lua is KURENAI's own; binds/autostart may have been edited by you, so those are
+# only created if missing. If yours differs, the new version is saved as <file>.new to merge by hand.
+if [ -e "$CFG/hypr/kurenai.lua" ]; then mkdir -p "$REPLACED"; mv "$CFG/hypr/kurenai.lua" "$REPLACED/"; fi
+cp "$SRC/hypr/kurenai.lua" "$CFG/hypr/kurenai.lua"
+for f in kurenai-binds.lua kurenai-autostart.lua; do
+  if [ ! -e "$CFG/hypr/$f" ]; then
+    cp "$SRC/hypr/$f" "$CFG/hypr/$f"
+  elif ! cmp -s "$SRC/hypr/$f" "$CFG/hypr/$f"; then
+    cp "$SRC/hypr/$f" "$CFG/hypr/$f.new"
+    echo "     kept your existing $f; new version saved as $f.new (diff $CFG/hypr/$f $CFG/hypr/$f.new)"
+  fi
 done
 
 echo "3/5 Installing Quickshell config (qs -c kurenai)..."
