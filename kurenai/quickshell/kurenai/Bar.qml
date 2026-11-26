@@ -70,13 +70,14 @@ PanelWindow {
         Divider {}
 
         BarItem {
-            icon: UiState.dnd ? Theme.icons.bellOff : Theme.icons.bell
-            iconColor: UiState.notificationCount > 0 ? Theme.accentText : Theme.text2
-            label: UiState.notificationCount > 0 ? String(UiState.notificationCount) : ""
+            icon: NotificationStore.dnd ? Theme.icons.bellOff : Theme.icons.bell
+            iconColor: NotificationStore.hasCritical ? Theme.accent
+                     : NotificationStore.count > 0 ? Theme.accentText : Theme.text2
+            label: NotificationStore.count > 0 ? String(NotificationStore.count) : ""
             labelColor: Theme.accentText
             labelFamily: Theme.fontMono
             active: UiState.notificationsOpen
-            onClicked: UiState.toggleNotifications()
+            onClicked: m => m.button === Qt.MiddleButton ? NotificationStore.toggleDnd() : UiState.toggleNotifications()
         }
 
         Clock {}

@@ -1,11 +1,19 @@
 import Quickshell
 
-// KURENAI shell entry point. Run with:  qs -c kurenai
-// Phase 1: top bar on every screen. Later phases add the quick-settings panel,
-// notification centre and launcher as siblings of the Variants below.
+// KURENAI shell entry point. Run with:  qs -c kurenai   (managed start: kurenai-ctl start)
+// Phase 2: bar + notification popups/centre + launcher + IPC.
+// Phase 3 adds the quick-settings panel next to these.
 ShellRoot {
+    // one bar per screen
     Variants {
         model: Quickshell.screens
         Bar {}
     }
+
+    // single instances: they follow the focused monitor themselves
+    NotificationPopups {}
+    NotificationCenter {}
+    Launcher {}
+
+    Ipc {}
 }

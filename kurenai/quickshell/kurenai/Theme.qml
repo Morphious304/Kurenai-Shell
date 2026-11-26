@@ -10,6 +10,8 @@ Singleton {
     readonly property color surface: "#30302F"
     readonly property color raised:  "#3A3535"
     readonly property color scrim:   "#B3141414"
+    readonly property color panelBg: "#F2262625"      // panels/popups: 95% charcoal (>=10:1 for bone text on any wallpaper)
+    readonly property color panelBorder: "#3DF4E8BE"  // bone @ 24%
 
     // ---- text (contrast checked against bg / surface / raised) -------------
     readonly property color text:     "#F4E8BE"   // bone
@@ -43,9 +45,16 @@ Singleton {
     readonly property int barHeight: 36
     readonly property int itemHeight: 24
 
+    readonly property int popupMargin: 12        // gap between a panel and the screen edge / bar
+    readonly property int notifWidth: 360
+    readonly property int centerWidth: 380
+    readonly property int launcherWidth: 560
+    readonly property int launcherRowHeight: 44
+
     // ---- motion -----------------------------------------------------------
     readonly property int durFast: 120
     readonly property int durBase: 220
+    readonly property int durSlow: 320
 
     // ---- type -------------------------------------------------------------
     readonly property string fontUi:      "Adwaita Sans"
@@ -78,6 +87,12 @@ Singleton {
         bolt:     "\uf0e7",
         bell:     "\uf0f3",
         bellOff:  "\uf1f6",
-        sliders:  "\uf1de"
+        sliders:  "\uf1de",
+        close:    "\uf00d",
+        trash:    "\uf1f8",
+        search:   "\uf002",
+        star:     "\uf005",
+        starO:    "\uf006",
+        clock:    "\uf017"
     })
 }

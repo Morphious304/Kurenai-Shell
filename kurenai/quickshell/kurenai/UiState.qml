@@ -2,17 +2,14 @@ pragma Singleton
 import QtQuick
 import Quickshell
 
-// Shared UI state. Phase 1 only the bar reads/writes this; the quick-settings panel,
-// notification centre and launcher (later phases) will bind to the same flags.
+// Shared open/closed flags for every overlay. Only one overlay is open at a time.
+// Notification count and Do Not Disturb live in NotificationStore (single source of truth).
 Singleton {
     id: root
 
-    property bool quickSettingsOpen: false
+    property bool quickSettingsOpen: false   // phase 3
     property bool notificationsOpen: false
     property bool launcherOpen: false
-
-    property int  notificationCount: 0   // wired to the notification server in phase 2
-    property bool dnd: false             // do-not-disturb, phase 2
 
     function closeAll() {
         quickSettingsOpen = false;
@@ -20,8 +17,9 @@ Singleton {
         launcherOpen = false;
     }
 
-    // Only one overlay open at a time.
     function toggleQuickSettings() { const v = !quickSettingsOpen; closeAll(); quickSettingsOpen = v; }
     function toggleNotifications() { const v = !notificationsOpen; closeAll(); notificationsOpen = v; }
     function toggleLauncher()      { const v = !launcherOpen;      closeAll(); launcherOpen = v; }
+    function openLauncher()        { closeAll(); launcherOpen = true; }
+    function openNotifications()   { closeAll(); notificationsOpen = true; }
 }

@@ -63,7 +63,7 @@ end)
 
 -- 3. Motion: short, ease-out, state changes only --------------------------------
 -- Speed unit is deciseconds: 2.2 = ~220 ms, 1.6 = ~160 ms.
--- If `hyprctl configerrors` complains about `bezier`, rename it to `curve` (the wiki shows both).
+-- (hl.curve / hl.animation shapes match the Hyprland 0.55+ Lua examples; check `hyprctl configerrors`.)
 try("animations", function()
   hl.curve("kurenaiOut",  { type = "bezier", points = { {0.16, 1.0},  {0.30, 1.0} } })
   hl.curve("kurenaiSoft", { type = "bezier", points = { {0.25, 0.10}, {0.25, 1.0} } })
@@ -78,8 +78,8 @@ try("animations", function()
 end)
 
 -- 4. Floating windows: teal frame ------------------------------------------------
--- NOTE: `border_color` as a window-rule effect is not confirmed in the Lua wiki for 0.56.
--- If it errors you will see "[kurenai] section 'floating' failed" and nothing else breaks.
+-- `border_color` is a documented window-rule effect (wiki.hypr.land, Window Rules, 0.56).
+-- If it ever errors you will see "[kurenai] section 'floating' failed" and nothing else breaks.
 if FLOAT_ACCENT then
   try("floating", function()
     hl.window_rule({

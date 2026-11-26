@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# kurenai-ctl: backup / enable / disable / validate helper for the KURENAI theme.
-# Touches only: ~/.config/hypr/hyprland.lua (one marked line), ~/.config/hypr/kurenai.lua,
-# ~/.config/quickshell/kurenai/, and ~/.local/share/kurenai/.
+# kurenai-ctl: install-time helper for the KURENAI desktop shell. Everything is reversible.
+# Touches only: ~/.config/hypr/hyprland.lua (up to three marked one-line hooks),
+# ~/.config/hypr/kurenai*.lua, ~/.config/quickshell/kurenai/, ~/.local/share/kurenai/.
+# It never edits your notification daemon's config; it can stop/start the daemon process.
 set -u
 
 CFG="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -9,26 +10,59 @@ HYPR_DIR="$CFG/hypr"
 QS_DIR="$CFG/quickshell"
 STATE="${XDG_DATA_HOME:-$HOME/.local/share}/kurenai"
 BACKUPS="$STATE/backups"
-MARK="KURENAI-HOOK"
-HOOK='local ok_k, err_k = pcall(require, "kurenai"); if not ok_k then print("[kurenai] " .. tostring(err_k)) end -- KURENAI-HOOK'
+PREV_NOTIFIER="$STATE/previous-notifier"
 
-die() { printf 'kurenai-ctl: %s\n' "$*" >&2; exit 1; }
+# Hooks: one marked line each in hyprland.lua. Marker text must not contain another marker.
+MARK_THEME="KURENAI-HOOK"
+HOOK_THEME='local ok_k, err_k = pcall(require, "kurenai"); if not ok_k then print("[kurenai] " .. tostring(err_k)) end -- KURENAI-HOOK'
+MARK_BINDS="KURENAI-BINDS-HOOK"
+HOOK_BINDS='local ok_b, err_b = pcall(require, "kurenai-binds"); if not ok_b then print("[kurenai] " .. tostring(err_b)) end -- KURENAI-BINDS-HOOK'
+MARK_AUTO="KURENAI-AUTOSTART-HOOK"
+HOOK_AUTO='local ok_a, err_a = pcall(require, "kurenai-autostart"); if not ok_a then print("[kurenai] " .. tostring(err_a)) end -- KURENAI-AUTOSTART-HOOK'
+
+NOTIFIERS="mako dunst swaync"
+
+die()   { printf 'kurenai-ctl: %s\n' "$*" >&2; exit 1; }
 stamp() { date +%Y%m%d-%H%M%S; }
+have()  { command -v "$1" >/dev/null 2>&1; }
+reload_hypr() { have hyprctl && hyprctl reload >/dev/null 2>&1; }
 
 usage() {
-  cat <<EOF
+  cat <<USAGE
 Usage: kurenai-ctl <command>
 
-  backup     copy ~/.config/hypr and ~/.config/quickshell into $BACKUPS/<timestamp>
-  enable     backup, then append ONE marked line to hyprland.lua and reload Hyprland
-  disable    remove that marked line (your other edits are kept) and reload
-  validate   read-only health check of versions, services, fonts and files
-  stop       stop the KURENAI shell if it is running
-  rollback   stop shell + disable hook + move KURENAI files aside (nothing is deleted)
-  restore    like rollback, and also restore hyprland.lua from the latest backup
-EOF
+ Setup
+  backup             copy ~/.config/hypr and ~/.config/quickshell into $BACKUPS/<timestamp>
+  validate           read-only health check (versions, services, fonts, files, conflicts)
+  enable             theme: add ONE marked line to hyprland.lua (borders, gaps, motion)
+  disable            theme: remove that line
+  binds-check        read-only: compare KURENAI's keybinds with the binds Hyprland has active
+  enable-binds       keybinds: add ONE marked line (run binds-check first)
+  disable-binds      keybinds: remove that line
+  enable-autostart   start the shell with the session: add ONE marked line
+  disable-autostart  remove that line
+
+ Running the shell
+  start              start the shell detached (no duplicates)
+  stop               stop the shell
+  restart            stop, then start
+  logs               show the shell's log (qs log)
+
+ Notifications (only one program may own org.freedesktop.Notifications)
+  notif-status       who owns it right now, and where mako/dunst/swaync are started
+  notif-takeover     stop the running notification daemon so KURENAI can own the service
+  notif-restore      stop the KURENAI shell and bring the previous daemon back
+
+ Launcher
+  reset-launcher     forget favourites and recents (rewrites launcher.json)
+
+ Undo
+  rollback           stop shell, restore the old notifier, remove ALL hooks, move KURENAI files aside
+  restore            rollback, and also restore hyprland.lua from the latest backup
+USAGE
 }
 
+# ------------------------------------------------------------------ backup / hooks
 cmd_backup() {
   local dir; dir="$BACKUPS/$(stamp)"
   mkdir -p "$dir" || die "cannot create $dir"
@@ -38,65 +72,219 @@ cmd_backup() {
   echo "Backup written to $dir"
 }
 
-cmd_enable() {
+hook_add() {  # name mark line module-file
+  local name="$1" mark="$2" line="$3" module="$4"
   local f="$HYPR_DIR/hyprland.lua"
-  [ -f "$f" ] || die "$f not found (this theme targets the Lua config)"
-  [ -f "$HYPR_DIR/kurenai.lua" ] || die "kurenai.lua is not installed; run install.sh first"
-  if grep -qF "$MARK" "$f"; then echo "Already enabled."; return 0; fi
+  [ -f "$f" ] || die "$f not found (this setup targets the Lua config)"
+  [ -f "$HYPR_DIR/$module" ] || die "$module is not installed; run install.sh first"
+  if grep -qF "$mark" "$f"; then echo "$name: already enabled."; return 0; fi
   cmd_backup >/dev/null || die "backup failed; not touching hyprland.lua"
-  printf '\n%s\n' "$HOOK" >> "$f"
-  command -v hyprctl >/dev/null && hyprctl reload >/dev/null 2>&1
-  echo "Enabled. Hyprland config errors (empty = none):"
-  command -v hyprctl >/dev/null && hyprctl configerrors
+  printf '\n%s\n' "$line" >> "$f"
+  reload_hypr
+  echo "$name: enabled. Hyprland config errors (empty = none):"
+  have hyprctl && hyprctl configerrors
+  return 0
 }
 
-cmd_disable() {
-  local f="$HYPR_DIR/hyprland.lua"
+hook_remove() {  # name mark
+  local name="$1" mark="$2" f="$HYPR_DIR/hyprland.lua"
   [ -f "$f" ] || return 0
-  if grep -qF "$MARK" "$f"; then
+  if grep -qF "$mark" "$f"; then
     cp -a "$f" "$f.pre-disable-$(stamp)"
-    sed -i "/$MARK/d" "$f"
-    echo "Hook removed from hyprland.lua (copy kept as hyprland.lua.pre-disable-*)."
+    sed -i "/$mark/d" "$f"
+    echo "$name: hook removed from hyprland.lua (copy kept as hyprland.lua.pre-disable-*)."
   else
-    echo "No KURENAI hook found in hyprland.lua."
+    echo "$name: no hook found in hyprland.lua."
   fi
-  command -v hyprctl >/dev/null && hyprctl reload >/dev/null 2>&1
+  reload_hypr
+  return 0
+}
+
+cmd_enable()            { hook_add    "theme"     "$MARK_THEME" "$HOOK_THEME" "kurenai.lua"; }
+cmd_disable()           { hook_remove "theme"     "$MARK_THEME"; }
+cmd_enable_binds()      { hook_add    "binds"     "$MARK_BINDS" "$HOOK_BINDS" "kurenai-binds.lua"; }
+cmd_disable_binds()     { hook_remove "binds"     "$MARK_BINDS"; }
+cmd_enable_autostart()  { hook_add    "autostart" "$MARK_AUTO"  "$HOOK_AUTO"  "kurenai-autostart.lua"; }
+cmd_disable_autostart() { hook_remove "autostart" "$MARK_AUTO"; }
+
+# ------------------------------------------------------------------ running the shell
+shell_running() { have qs && qs list 2>/dev/null | grep -q 'kurenai'; }
+
+cmd_start() {
+  have qs || die "qs (quickshell) not found on PATH"
+  [ -f "$QS_DIR/kurenai/shell.qml" ] || die "KURENAI is not installed; run install.sh"
+  if shell_running; then echo "KURENAI shell is already running."; return 0; fi
+  qs -n -d -c kurenai
+  sleep 1
+  if shell_running; then echo "KURENAI shell started. Logs: kurenai-ctl logs"
+  else echo "Started, but it is not listed by 'qs list'. Check: kurenai-ctl logs  (or run in a terminal: qs -c kurenai)"; fi
 }
 
 cmd_stop() {
-  if command -v qs >/dev/null 2>&1 && qs kill -c kurenai >/dev/null 2>&1; then
+  if have qs && qs kill -c kurenai >/dev/null 2>&1; then
     echo "KURENAI shell stopped."
-  elif pkill -f 'qs -c kurenai' 2>/dev/null || pkill -f 'quickshell -c kurenai' 2>/dev/null; then
+  elif pkill -f 'qs .*-c kurenai' 2>/dev/null || pkill -f 'quickshell .*-c kurenai' 2>/dev/null; then
     echo "KURENAI shell stopped."
   else
     echo "KURENAI shell was not running."
   fi
 }
 
+cmd_restart() { cmd_stop; sleep 1; cmd_start; }
+cmd_logs()    { have qs || die "qs not found"; qs log -c kurenai 2>&1 | tail -n 80; }
+
+# ------------------------------------------------------------------ notifications
+notif_owner() {  # prints "pid comm" of the current owner, or nothing
+  have busctl || return 0
+  busctl --user status org.freedesktop.Notifications 2>/dev/null | awk -F= '/^PID=/{p=$2} /^Comm=/{c=$2} END{if(p!="") print p, c}'
+}
+
+cmd_notif_status() {
+  local o; o="$(notif_owner)"
+  if [ -n "$o" ]; then echo "org.freedesktop.Notifications is owned by: $o"
+  else echo "org.freedesktop.Notifications: no owner (or busctl unavailable)"; fi
+  local n
+  for n in $NOTIFIERS; do
+    pgrep -x "$n" >/dev/null && echo "  running: $n"
+    systemctl --user is-active --quiet "$n" 2>/dev/null && echo "  user unit active: $n"
+  done
+  echo "Where these daemons might be started from (edit/comment these out yourself; kurenai-ctl will not):"
+  grep -nE 'mako|dunst|swaync' "$HYPR_DIR"/*.lua 2>/dev/null | sed 's/^/  /' || true
+  [ -d "$CFG/systemd/user" ] && grep -rlE 'mako|dunst|swaync' "$CFG/systemd/user" 2>/dev/null | sed 's/^/  unit file: /'
+  return 0
+}
+
+cmd_notif_takeover() {
+  mkdir -p "$STATE"
+  local n found=""
+  for n in $NOTIFIERS; do
+    if systemctl --user is-active --quiet "$n" 2>/dev/null; then
+      printf '%s unit\n' "$n" > "$PREV_NOTIFIER"
+      systemctl --user stop "$n" && echo "Stopped user unit: $n"
+      found="$n"; break
+    elif pgrep -x "$n" >/dev/null; then
+      printf '%s proc\n' "$n" > "$PREV_NOTIFIER"
+      pkill -x "$n" && echo "Stopped process: $n"
+      found="$n"; break
+    fi
+  done
+  [ -z "$found" ] && echo "No mako/dunst/swaync was running. Nothing to stop."
+  [ -n "$found" ] && echo "Remembered in $PREV_NOTIFIER; undo with: kurenai-ctl notif-restore"
+  echo "Next: start the shell (kurenai-ctl start), then test:  notify-send 'KURENAI' 'hello'"
+  echo "Also comment out any autostart of $found in your Hyprland config (see: kurenai-ctl notif-status)."
+  return 0
+}
+
+cmd_notif_restore() {
+  cmd_stop
+  [ -f "$PREV_NOTIFIER" ] || { echo "No previous notification daemon was recorded."; return 0; }
+  local n kind; read -r n kind < "$PREV_NOTIFIER"
+  case " $NOTIFIERS " in *" $n "*) ;; *) die "unexpected value in $PREV_NOTIFIER";; esac
+  sleep 1
+  if [ "$kind" = "unit" ]; then
+    systemctl --user start "$n" && echo "Started user unit: $n"
+  else
+    have "$n" || die "$n not found on PATH"
+    setsid "$n" >/dev/null 2>&1 < /dev/null &
+    echo "Started: $n"
+  fi
+  return 0
+}
+
+# ------------------------------------------------------------------ launcher
+cmd_reset_launcher() {
+  mkdir -p "$STATE"
+  printf '{\n  "favorites": [],\n  "recent": []\n}\n' > "$STATE/launcher.json"
+  echo "launcher.json reset. Restart the shell to reload it: kurenai-ctl restart"
+}
+
+# ------------------------------------------------------------------ keybind conflicts
+cmd_binds_check() {
+  local lua="$HYPR_DIR/kurenai-binds.lua"
+  [ -f "$lua" ] || die "kurenai-binds.lua is not installed; run install.sh"
+  have hyprctl || die "hyprctl not found"
+
+  # Active binds as "mask|KEY|dispatcher arg" lines (parsed from the plain-text output of `hyprctl binds`).
+  local active
+  active="$(hyprctl binds 2>/dev/null | awk '
+    function flush() { if (have) print m "|" toupper(k) "|" d " " a }
+    /^[[:space:]]*modmask:/    { flush(); have=1; m=$2; k=""; d=""; a="" }
+    /^[[:space:]]*key:/        { k=$2 }
+    /^[[:space:]]*dispatcher:/ { d=$2 }
+    /^[[:space:]]*arg:/        { sub(/^[[:space:]]*arg:[[:space:]]*/, ""); a=$0 }
+    END { flush() }')"
+
+  if [ -z "$active" ]; then
+    echo "Could not read any active binds from 'hyprctl binds' (unexpected output format in Lua mode?)."
+    echo "Check by hand:  grep -nE 'SPACE|\"N\"| N ' $HYPR_DIR/*.lua | grep -v kurenai"
+    return 1
+  fi
+
+  local clashes=0 chord mask key part
+  while IFS= read -r chord; do
+    mask=0; key=""
+    local IFS_SAVE="$IFS"; IFS='+'
+    for part in $chord; do
+      part="$(printf '%s' "$part" | tr -d ' ' | tr '[:lower:]' '[:upper:]')"
+      case "$part" in
+        SUPER|MOD4|WIN) mask=$((mask + 64));;
+        SHIFT)          mask=$((mask + 1));;
+        CTRL|CONTROL)   mask=$((mask + 4));;
+        ALT|MOD1)       mask=$((mask + 8));;
+        *)              key="$part";;
+      esac
+    done
+    IFS="$IFS_SAVE"
+    local hit; hit="$(printf '%s\n' "$active" | grep -F "$mask|$key|" | head -3)"
+    if [ -n "$hit" ]; then
+      clashes=$((clashes + 1))
+      printf '  [CLASH] %-24s already bound to: %s\n' "$chord" "$(printf '%s' "$hit" | head -1 | cut -d'|' -f3-)"
+    else
+      printf '  [ free] %s\n' "$chord"
+    fi
+  done < <(grep -oE '^[[:space:]]*\{ "[^"]+"' "$lua" | sed -E 's/^[[:space:]]*\{ "//; s/"$//')
+
+  echo
+  if [ "$clashes" -eq 0 ]; then echo "No clashes found. Safe to run: kurenai-ctl enable-binds"
+  else echo "$clashes clash(es). Edit the chords in $lua (e.g. change SUPER to SUPER + ALT), then re-run binds-check."; fi
+  echo "(Parsed from 'hyprctl binds'; if you use submaps or non-standard modifiers, double-check by hand.)"
+  echo "Your existing rofi binds, for reference:"
+  hyprctl binds 2>/dev/null | grep -i -B8 rofi | grep -E 'key:|arg:' | sed 's/^/  /' || true
+  [ "$clashes" -eq 0 ]
+}
+
+# ------------------------------------------------------------------ rollback / restore
 move_aside() {
   local dest="$STATE/removed-$(stamp)"
   mkdir -p "$dest"
-  [ -e "$HYPR_DIR/kurenai.lua" ] && mv "$HYPR_DIR/kurenai.lua" "$dest/"
-  [ -d "$QS_DIR/kurenai" ]       && mv "$QS_DIR/kurenai" "$dest/quickshell-kurenai"
-  echo "KURENAI files moved to $dest"
+  local f
+  for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua; do
+    [ -e "$HYPR_DIR/$f" ] && mv "$HYPR_DIR/$f" "$dest/"
+  done
+  [ -d "$QS_DIR/kurenai" ] && mv "$QS_DIR/kurenai" "$dest/quickshell-kurenai"
+  echo "KURENAI files moved to $dest (nothing deleted)"
+  return 0
 }
 
 cmd_rollback() {
-  cmd_stop
+  cmd_notif_restore
+  cmd_disable_autostart
+  cmd_disable_binds
   cmd_disable
   move_aside
-  command -v hyprctl >/dev/null && hyprctl reload >/dev/null 2>&1
-  echo "Rollback complete. To go back: re-run install.sh and 'kurenai-ctl enable'."
+  reload_hypr
+  echo "Rollback complete. Your Rofi, backups and personal files are untouched."
+  echo "To go back: re-run install.sh and the enable commands."
 }
 
 cmd_restore() {
   local src="$BACKUPS/latest"
   [ -d "$src/hypr" ] || die "no backup at $src (nothing to restore)"
-  cmd_stop
+  cmd_notif_restore
   move_aside
   cp -a "$HYPR_DIR/hyprland.lua" "$HYPR_DIR/hyprland.lua.pre-restore-$(stamp)" 2>/dev/null
   cp -a "$src/hypr/hyprland.lua" "$HYPR_DIR/hyprland.lua" || die "restore of hyprland.lua failed"
-  command -v hyprctl >/dev/null && hyprctl reload >/dev/null 2>&1
+  reload_hypr
   echo "hyprland.lua restored from $(readlink -f "$src")."
 }
 
@@ -108,69 +296,102 @@ bad()  { printf '  [FAIL] %s\n' "$*"; FAIL=$((FAIL+1)); }
 
 cmd_validate() {
   echo "Versions"
-  if command -v hyprctl >/dev/null; then
-    ok "$(hyprctl version 2>/dev/null | head -1)"
-  else bad "hyprctl not found"; fi
-  if command -v pacman >/dev/null; then
+  if have hyprctl; then ok "$(hyprctl version 2>/dev/null | head -1)"; else bad "hyprctl not found"; fi
+  if have pacman; then
     pacman -Q quickshell >/dev/null 2>&1 && ok "$(pacman -Q quickshell)" || bad "quickshell not installed"
   fi
-  command -v qs >/dev/null && ok "qs binary: $(command -v qs)" || bad "qs not on PATH"
+  have qs && ok "qs binary: $(command -v qs)  ($(qs --version 2>/dev/null | head -1))" || bad "qs not on PATH"
 
   echo "Files"
   [ -f "$HYPR_DIR/hyprland.lua" ] && ok "hyprland.lua present" || bad "hyprland.lua missing (Lua config required)"
-  [ -f "$HYPR_DIR/kurenai.lua" ]  && ok "kurenai.lua installed" || warn "kurenai.lua not installed"
-  if [ -f "$HYPR_DIR/hyprland.lua" ] && grep -qF "$MARK" "$HYPR_DIR/hyprland.lua"; then
-    ok "theme hook present in hyprland.lua"
-  else warn "theme hook NOT in hyprland.lua (run: kurenai-ctl enable)"; fi
+  local f
+  for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua; do
+    [ -f "$HYPR_DIR/$f" ] && ok "$f installed" || warn "$f not installed"
+  done
+  if [ -f "$HYPR_DIR/hyprland.lua" ]; then
+    grep -qF "$MARK_THEME" "$HYPR_DIR/hyprland.lua" && ok "theme hook active"      || warn "theme hook not active (kurenai-ctl enable)"
+    grep -qF "$MARK_BINDS" "$HYPR_DIR/hyprland.lua" && ok "binds hook active"      || warn "binds hook not active (kurenai-ctl binds-check, then enable-binds)"
+    grep -qF "$MARK_AUTO"  "$HYPR_DIR/hyprland.lua" && ok "autostart hook active"  || warn "autostart hook not active (enable only after the shell works)"
+  fi
   [ -f "$QS_DIR/kurenai/shell.qml" ] && ok "quickshell/kurenai/shell.qml present" || bad "quickshell/kurenai/shell.qml missing"
   [ -f "$QS_DIR/kurenai/qmldir" ]    && ok "qmldir present" || bad "qmldir missing"
+  if [ -f "$QS_DIR/kurenai/qmldir" ]; then
+    # every file named in qmldir must exist
+    local missing=""
+    while read -r a b c d; do
+      case "$a" in singleton) file="$d";; "") continue;; *) file="$c";; esac
+      [ -f "$QS_DIR/kurenai/$file" ] || missing="$missing $file"
+    done < "$QS_DIR/kurenai/qmldir"
+    [ -z "$missing" ] && ok "every file listed in qmldir exists" || bad "qmldir lists missing files:$missing"
+  fi
 
   echo "Lua syntax"
-  if command -v luac >/dev/null; then
-    luac -p "$HYPR_DIR/kurenai.lua" 2>/dev/null && ok "kurenai.lua parses (luac)" || bad "kurenai.lua has a syntax error"
+  if have luac; then
+    for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua; do
+      [ -f "$HYPR_DIR/$f" ] && { luac -p "$HYPR_DIR/$f" 2>/dev/null && ok "$f parses" || bad "$f has a syntax error"; }
+    done
   else warn "luac not installed; skipping syntax check (optional)"; fi
 
   echo "Hyprland config errors"
-  if command -v hyprctl >/dev/null; then
+  if have hyprctl; then
     local errs; errs="$(hyprctl configerrors 2>/dev/null)"
     [ -z "$errs" ] && ok "none reported" || { warn "hyprctl configerrors says:"; printf '%s\n' "$errs" | sed 's/^/         /'; }
   fi
 
-  echo "Services the bar reads"
-  systemctl is-active --quiet NetworkManager && ok "NetworkManager active" \
-    || warn "NetworkManager not active: the network indicator will show 'offline'"
-  systemctl --user is-active --quiet pipewire && ok "PipeWire active (user)" \
-    || warn "PipeWire not active (user): audio indicators will be empty"
-  systemctl --user is-active --quiet wireplumber && ok "WirePlumber active (user)" \
-    || warn "WirePlumber not active (user): default sink/source may be unavailable"
-  if command -v pacman >/dev/null; then
-    pacman -Q upower >/dev/null 2>&1 && ok "upower installed (starts on demand)" \
-      || warn "upower not installed: battery indicator will be hidden"
+  echo "Services the shell reads"
+  systemctl is-active --quiet NetworkManager && ok "NetworkManager active" || warn "NetworkManager not active: network indicator shows 'offline'"
+  systemctl --user is-active --quiet pipewire && ok "PipeWire active (user)" || warn "PipeWire not active (user)"
+  systemctl --user is-active --quiet wireplumber && ok "WirePlumber active (user)" || warn "WirePlumber not active (user)"
+  if have pacman; then pacman -Q upower >/dev/null 2>&1 && ok "upower installed" || warn "upower not installed: battery indicator hidden"; fi
+
+  echo "Notifications"
+  local o; o="$(notif_owner)"
+  if [ -z "$o" ]; then ok "nobody owns org.freedesktop.Notifications yet (KURENAI can take it)"
+  else
+    case "$o" in
+      *qs*|*quickshell*) ok "owned by Quickshell ($o)";;
+      *) warn "owned by: $o  -> KURENAI will not receive notifications until it is stopped (kurenai-ctl notif-takeover)";;
+    esac
   fi
 
-  echo "Fonts"
-  fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd" && ok "JetBrainsMono Nerd Font" || warn "JetBrainsMono Nerd Font missing: icons will be tofu"
-  fc-list 2>/dev/null | grep -qi "Adwaita Sans"       && ok "Adwaita Sans" || warn "Adwaita Sans missing: UI falls back to default font"
-  [ -n "$(fc-list :lang=ja family 2>/dev/null | head -1)" ] && ok "a Japanese-capable font is installed" \
-    || warn "no Japanese font: the decorative kanji will show as a box (pacman -S noto-fonts-cjk)"
+  echo "Launcher fallback"
+  have rofi && ok "rofi installed: $(command -v rofi)" || warn "rofi not found: the launcher fallback will not work"
+  [ -f "$STATE/launcher.json" ] && ok "launcher.json present" || warn "launcher.json missing (the installer creates it)"
+  have notify-send && ok "notify-send available (for testing)" || warn "notify-send missing (pacman -S libnotify) for testing notifications"
 
-  echo "Possible conflicts"
-  for p in waybar mako dunst swaync; do
-    pgrep -x "$p" >/dev/null && warn "$p is running (phase 2 notification centre will need the notification daemon to be stopped)"
-  done
-  pgrep -f 'qs -c kurenai|quickshell -c kurenai' >/dev/null && ok "KURENAI shell is running" || warn "KURENAI shell is not running (start: qs -c kurenai)"
+  echo "Fonts"
+  fc-list 2>/dev/null | grep -qi "JetBrainsMono Nerd" && ok "JetBrainsMono Nerd Font" || warn "JetBrainsMono Nerd Font missing: icons will be boxes"
+  fc-list 2>/dev/null | grep -qi "Adwaita Sans"       && ok "Adwaita Sans" || warn "Adwaita Sans missing: UI falls back to the default font"
+  [ -n "$(fc-list :lang=ja family 2>/dev/null | head -1)" ] && ok "a Japanese-capable font is installed" \
+    || warn "no Japanese font: decorative kanji will be a box (pacman -S noto-fonts-cjk)"
+
+  echo "Shell"
+  shell_running && ok "KURENAI shell is running" || warn "KURENAI shell is not running (kurenai-ctl start)"
+  pgrep -x waybar >/dev/null && warn "waybar is running: two bars will stack"
 
   printf '\n%d ok, %d warnings, %d failures\n' "$PASS" "$WARN" "$FAIL"
   [ "$FAIL" -eq 0 ]
 }
 
 case "${1:-}" in
-  backup)   cmd_backup ;;
-  enable)   cmd_enable ;;
-  disable)  cmd_disable ;;
-  validate) cmd_validate ;;
-  stop)     cmd_stop ;;
-  rollback) cmd_rollback ;;
-  restore)  cmd_restore ;;
-  *)        usage; [ -z "${1:-}" ] || exit 1 ;;
+  backup)            cmd_backup ;;
+  validate)          cmd_validate ;;
+  enable)            cmd_enable ;;
+  disable)           cmd_disable ;;
+  binds-check)       cmd_binds_check ;;
+  enable-binds)      cmd_enable_binds ;;
+  disable-binds)     cmd_disable_binds ;;
+  enable-autostart)  cmd_enable_autostart ;;
+  disable-autostart) cmd_disable_autostart ;;
+  start)             cmd_start ;;
+  stop)              cmd_stop ;;
+  restart)           cmd_restart ;;
+  logs)              cmd_logs ;;
+  notif-status)      cmd_notif_status ;;
+  notif-takeover)    cmd_notif_takeover ;;
+  notif-restore)     cmd_notif_restore ;;
+  reset-launcher)    cmd_reset_launcher ;;
+  rollback)          cmd_rollback ;;
+  restore)           cmd_restore ;;
+  *)                 usage; [ -z "${1:-}" ] || exit 1 ;;
 esac

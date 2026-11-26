@@ -48,6 +48,6 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: UiState.toggleLauncher()   // launcher arrives in phase 3
+        onClicked: UiState.toggleLauncher()
     }
 }

@@ -1,6 +1,9 @@
 singleton Theme 1.0 Theme.qml
+singleton Config 1.0 Config.qml
 singleton UiState 1.0 UiState.qml
 singleton Compositor 1.0 Compositor.qml
+singleton NotificationStore 1.0 NotificationStore.qml
+singleton Apps 1.0 Apps.qml
 BarItem 1.0 BarItem.qml
 Divider 1.0 Divider.qml
 Emblem 1.0 Emblem.qml
@@ -10,3 +13,10 @@ Clock 1.0 Clock.qml
 Tray 1.0 Tray.qml
 SysStatus 1.0 SysStatus.qml
 Bar 1.0 Bar.qml
+Surface 1.0 Surface.qml
+PanelOverlay 1.0 PanelOverlay.qml
+NotificationCard 1.0 NotificationCard.qml
+NotificationPopups 1.0 NotificationPopups.qml
+NotificationCenter 1.0 NotificationCenter.qml
+Launcher 1.0 Launcher.qml
+Ipc 1.0 Ipc.qml
