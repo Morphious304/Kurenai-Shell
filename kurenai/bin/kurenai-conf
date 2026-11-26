@@ -51,6 +51,7 @@ wallpaper|wallpaperVisibleRows|int|3|1|8||Grid rows|Rows visible before scrollin
 wallpaper|wallpaperThumbDelay|int|90|0|1000||Thumbnail delay (ms)|How long a cell must stay on screen before its thumbnail is decoded.
 wallpaper|wallpaperAnimatePreview|bool|true||||Animate GIF preview|The big preview plays animated GIFs.
 panels|quickSettingsDocked|bool|true||||Quick settings docked|Hangs from the bar; floats over a fullscreen window.
+panels|glassOpacity|int|100|40|100||Glass opacity (%)|100 = solid, the built-in look. Lower makes the bar and panels translucent so the hyprglass plugin shows through (kurenai-ctl enable-glass). 60 to 80 is the usable range.
 panels|qsMaxListRows|int|6|3|15||Device list rows|Wi-Fi, Bluetooth and audio lists scroll beyond this.
 panels|brightnessDevice|string|||||Backlight device|Empty = first backlight. A name from brightnessctl -l pins one.
 panels|brightnessExponent|int|4|0|8||Brightness curve|Must match your brightness keybinds. 0 = plain linear.

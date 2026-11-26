@@ -16,7 +16,9 @@ Page {
         { k: "lock", name: "Lock screen process", on: "enable-lock", off: "disable-lock",
           what: "Starts the locker with the session and makes Hyprland restart it after a crash." },
         { k: "hypr", name: "Monitors and input", on: "enable-hypr", off: "disable-hypr",
-          what: "Loads what the Display and input page generates. Switched on by its Apply button." }
+          what: "Loads what the Display and input page generates. Switched on by its Apply button." },
+        { k: "glass", name: "Glass (hyprglass plugin)", on: "enable-glass", off: "disable-glass",
+          what: "Loads the hyprglass plugin at every start and applies the KURENAI glass settings. Needs the plugin installed once: hyprpm add https://github.com/hyprnux/hyprglass, then hyprpm enable hyprglass. Check: kurenai-ctl glass-status." }
     ]
 
     Card {

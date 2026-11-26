@@ -21,7 +21,7 @@ SDDM, PipeWire, NetworkManager, kitty. Other setups may work but were not tried.
 - [10. What is verified and what is not](#10-what-is-verified-and-what-is-not)
 
 Detail pages (in `docs/`): [LOCK-SCREEN](docs/LOCK-SCREEN.md), [CLIPBOARD-AND-SYSMON](docs/CLIPBOARD-AND-SYSMON.md),
-[LAUNCHER](docs/LAUNCHER.md), [THEME](docs/THEME.md) (wallpaper colours), [FIREFOX](docs/FIREFOX.md), [SHORTCUTS-PAGE](docs/SHORTCUTS-PAGE.md), [PANELS](docs/PANELS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md),
+[LAUNCHER](docs/LAUNCHER.md), [THEME](docs/THEME.md) (wallpaper colours), [FIREFOX](docs/FIREFOX.md), [SHORTCUTS-PAGE](docs/SHORTCUTS-PAGE.md), [PANELS](docs/PANELS.md), [GLASS](docs/GLASS.md) (hyprglass plugin), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md),
 [CHANGELOG](docs/CHANGELOG.md).
 
 ---
@@ -307,6 +307,7 @@ Quickshell reloads QML when you save a file, so most changes appear immediately.
 | To change | Edit | Notes |
 |---|---|---|
 | Colours that follow the wallpaper | Quick Settings, or `kurenai-ctl theme ...` | [docs/THEME.md](docs/THEME.md) |
+| Glass (hyprglass plugin, optional) | `kurenai-ctl enable-glass`, `glass-status`; `kurenai-conf set glassOpacity 72` | [docs/GLASS.md](docs/GLASS.md) |
 | Firefox theme (opt-in) | `kurenai-ctl theme extra firefox on` | [docs/FIREFOX.md](docs/FIREFOX.md) |
 | Fixed (built-in) colours | `~/.config/quickshell/kurenai/Theme.qml` | the `defaults` table; with wallpaper colours on, these are only the fallback. Roles: `bg surface raised panelBg`, `text text2 muted`, `accent accentText accentDeep teal rose amber`. Keep small red text on `accentText`, not `accent` (contrast) |
 | Fonts | `Theme.qml`: `fontUi`, `fontMono`, `fontDisplay` | check what you have with `fc-list \| grep -i NAME` |
@@ -370,7 +371,7 @@ Nothing is deleted at any step; everything is moved aside or copied. Rofi, your 
 | Undo everything KURENAI added | `kurenai-ctl rollback` |
 | The same, and also put `hyprland.lua` back from the latest backup | `kurenai-ctl restore` |
 | Only stop the shell and bring your old notification daemon back | `kurenai-ctl notif-restore` |
-| Only remove one hook | `kurenai-ctl disable`, `disable-binds`, `disable-autostart` or `disable-lock` |
+| Only remove one hook | `kurenai-ctl disable`, `disable-binds`, `disable-autostart`, `disable-lock` or `disable-glass` |
 | Stop it for now, keep everything installed | `kurenai-ctl stop` |
 
 `rollback` stops the shell and the locker, removes **all four** marked hook lines from `hyprland.lua`, restores the notification daemon

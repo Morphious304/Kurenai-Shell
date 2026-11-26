@@ -26,6 +26,9 @@ HOOK_HYPR='local ok_h, err_h = pcall(require, "kurenai-hypr"); if not ok_h then 
 MARK_LOCK="KURENAI-LOCK-HOOK"
 HOOK_LOCK='local ok_l, err_l = pcall(require, "kurenai-lock"); if not ok_l then print("[kurenai] " .. tostring(err_l)) end -- KURENAI-LOCK-HOOK'
 
+MARK_GLASS="KURENAI-GLASS-HOOK"
+HOOK_GLASS='local ok_g, err_g = pcall(require, "kurenai-glass"); if not ok_g then print("[kurenai] " .. tostring(err_g)) end -- KURENAI-GLASS-HOOK'
+
 NOTIFIERS="mako dunst swaync"
 
 die()   { printf 'kurenai-ctl: %s\n' "$*" >&2; exit 1; }
@@ -83,6 +86,9 @@ Usage: kurenai-ctl <command>
   desktop-entry [status|install|remove]   the "KURENAI Settings" entry Rofi lists: install rewrites it with the ABSOLUTE program path (fixes "Failed to execute: 'kurenai-settings'")
   enable-hypr        load the generated monitor/input module: add ONE marked line (creates a harmless placeholder module if kurenai-hypr apply has not run yet)
   disable-hypr       remove that line
+  enable-glass       optional hyprglass plugin: add ONE marked line that loads it at every start AND applies the KURENAI glass settings
+  disable-glass      remove that line
+  glass-status       read-only report: hook, plugin file, running plugin state, config errors, shell translucency
   status [--json]    one machine-readable report: shell, lock, hooks, colours, tools (the settings window reads this)
 
  Shortcuts page
@@ -223,6 +229,61 @@ cmd_enable_hypr()       { hook_add    "hypr"      "$MARK_HYPR"  "$HOOK_HYPR"  "k
 cmd_disable_hypr()      { hook_remove "hypr"      "$MARK_HYPR"; }
 cmd_enable_autostart()  { hook_add    "autostart" "$MARK_AUTO"  "$HOOK_AUTO"  "kurenai-autostart.lua"; }
 cmd_disable_autostart() { hook_remove "autostart" "$MARK_AUTO"; }
+
+# ------------------------------------------------------------------ glass (optional hyprglass plugin)
+# kurenai-glass.lua loads the plugin from the config and configures it. These commands only add/remove its ONE hook line and
+# report; they never build or install the plugin (that is `hyprpm`, run by you, as your own user).
+cmd_enable_glass()  { hook_add    "glass" "$MARK_GLASS" "$HOOK_GLASS" "kurenai-glass.lua"; cmd_glass_status_short; }
+cmd_disable_glass() { hook_remove "glass" "$MARK_GLASS"; }
+
+# Same places kurenai-glass.lua looks, same order. Prints the first readable one.
+glass_so() {
+  local u="${USER:-$(id -un 2>/dev/null)}" p
+  for p in "${KURENAI_HYPRGLASS_SO:-}" "/var/cache/hyprpm/$u/HyprGlass/hyprglass.so" "/var/cache/hyprpm/$u/hyprglass/hyprglass.so" \
+           "$HOME/.local/share/hyprglass/hyprglass.so"; do
+    [ -n "$p" ] && [ -r "$p" ] && { printf '%s' "$p"; return 0; }
+  done
+  return 1
+}
+cmd_glass_status_short() {
+  glass_so >/dev/null && return 0
+  echo "glass: the hook is in place, but hyprglass.so was not found. Install the plugin once (as your user, no sudo needed for these):"
+  echo "         hyprpm add https://github.com/hyprnux/hyprglass"
+  echo "         hyprpm enable hyprglass"
+  echo "       then log out and in (or: hyprctl reload). Full report: kurenai-ctl glass-status"
+}
+cmd_glass_status() {
+  local f="$HYPR_DIR/hyprland.lua" so
+  echo "hyprglass (optional plugin, https://github.com/hyprnux/hyprglass)"
+  echo "Config side"
+  [ -f "$HYPR_DIR/kurenai-glass.lua" ] && ok "kurenai-glass.lua installed" || warn "kurenai-glass.lua not installed (re-run install.sh)"
+  hook_active "$f" "$MARK_GLASS" && ok "glass hook active (loads and configures the plugin at every start)" || warn "glass hook off: nothing loads the plugin at start (kurenai-ctl enable-glass)"
+  # things that load it a second time, or configure it a second time
+  local dup; dup="$(grep -nE 'hyprpm[[:space:]]+reload|hl\.plugin\.load' "$f" "$HYPR_DIR"/*.lua 2>/dev/null | grep -v 'kurenai-glass.lua' | grep -vE '^[^:]*:[0-9]+:[[:space:]]*--' || true)"
+  [ -z "$dup" ] && ok "nothing else loads plugins from your config" \
+    || { warn "another line loads plugins too; a second copy of hyprglass is refused (Paused: already loaded). Keep ONE method:"; printf '%s\n' "$dup" | sed 's/^/         /'; }
+  if grep -qE 'hl\.plugin\.hyprglass' "$f" 2>/dev/null; then
+    warn "your own hyprglass block is still in hyprland.lua; the KURENAI one is loaded after it and wins key by key. Remove yours to avoid confusion."
+  fi
+  echo "Plugin side"
+  if have hyprpm; then ok "hyprpm present"; else warn "hyprpm not found (it ships with Hyprland; without it use a downloaded hyprglass.so and set SO in kurenai-glass.lua)"; fi
+  if so="$(glass_so)"; then ok "hyprglass.so: $so"; else warn "hyprglass.so not found (hyprpm add https://github.com/hyprnux/hyprglass && hyprpm enable hyprglass)"; fi
+  echo "Running session"
+  if have hyprctl && hyprctl version >/dev/null 2>&1; then
+    local pl; pl="$(hyprctl plugin list 2>/dev/null)"
+    if printf '%s' "$pl" | grep -qi hyprglass; then
+      ok "plugin loaded in this session"
+      printf '%s\n' "$pl" | grep -i 'Description:' | grep -qi 'Paused' && warn "it is PAUSED: $(printf '%s\n' "$pl" | grep -i 'Description:' | head -1 | sed 's/^[[:space:]]*//')  -> hyprpm update, then log out and in"
+      hyprctl hyprglass status 2>/dev/null | sed 's/^/         /'
+    else warn "plugin not loaded in this session"; fi
+    local e; e="$(hyprctl configerrors 2>/dev/null | grep -i glass || true)"
+    [ -z "$e" ] && ok "no hyprglass config errors" || { warn "hyprglass config errors:"; printf '%s\n' "$e" | sed 's/^/         /'; }
+  else echo "  (not inside a Hyprland session: skipped)"; fi
+  echo "Shell side"
+  local g; g="$("$(prog_path kurenai-conf)" get glassOpacity 2>/dev/null || echo 100)"
+  [ "${g:-100}" -ge 100 ] 2>/dev/null && warn "glassOpacity is $g: the bar and panels are solid, so glass shows only on windows. Try: kurenai-conf set glassOpacity 72" \
+    || ok "glassOpacity is $g (bar and panels are translucent)"
+}
 
 # ------------------------------------------------------------------ running the shell
 cmd_start() {
@@ -1501,7 +1562,7 @@ cmd_status() {
   if [ "${1:-}" != "--json" ]; then
     echo "shell:  $(shell_running && echo "running (pid $(shell_pids | tr '\n' ' '))" || echo stopped)"
     echo "lock:   $(lock_running && echo "running, $(lock_state)" || echo stopped)"
-    local m n; for m in THEME:enable BINDS:binds AUTO:autostart LOCK:lock HYPR:hypr; do
+    local m n; for m in THEME:enable BINDS:binds AUTO:autostart LOCK:lock HYPR:hypr GLASS:glass; do
       n="MARK_${m%%:*}"; printf 'hook %-10s %s\n' "${m##*:}" "$(hook_active "$HYPR_DIR/hyprland.lua" "${!n}" && echo active || echo off)"
     done
     echo "(machine-readable: kurenai-ctl status --json)"; return 0
@@ -1512,10 +1573,10 @@ cmd_status() {
   for p in $pids; do [ "$first" = 1 ] || printf ', '; first=0; printf '%s' "$p"; done
   printf ']},\n'
   printf '  "lock": {"running": %s, "state": "%s"},\n' "$(jbool lock_running)" "$(lock_state | head -1 | jclean)"
-  printf '  "hooks": {"theme": %s, "binds": %s, "autostart": %s, "lock": %s, "hypr": %s},\n' \
+  printf '  "hooks": {"theme": %s, "binds": %s, "autostart": %s, "lock": %s, "hypr": %s, "glass": %s},\n' \
     "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_THEME")" "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_BINDS")" \
     "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_AUTO")" "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_LOCK")" \
-    "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_HYPR")"
+    "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_HYPR")" "$(jbool hook_active "$HYPR_DIR/hyprland.lua" "$MARK_GLASS")"
   printf '  "theme": {"enabled": %s, "type": "%s", "contrast": "%s", "accent": "%s", "hypr": %s, "rofi": %s, "extrasFollow": %s, "extras": [' \
     "$(jbool theme_enabled)" "$(theme_get type tonal-spot | jclean)" "$(theme_get contrast 0 | jclean)" "$(theme_get accent wallpaper | jclean)" \
     "$([ "$(theme_get hypr 1)" = 1 ] && echo true || echo false)" "$([ "$(theme_get rofi 1)" = 1 ] && echo true || echo false)" \
@@ -1753,7 +1814,7 @@ move_aside() {
   local dest="$STATE/removed-$(stamp)"
   mkdir -p "$dest"
   local f
-  for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua kurenai-hypr.lua; do
+  for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua kurenai-hypr.lua kurenai-glass.lua; do
     [ -e "$HYPR_DIR/$f" ] && mv "$HYPR_DIR/$f" "$dest/"
   done
   [ -d "$QS_DIR/kurenai" ] && mv "$QS_DIR/kurenai" "$dest/quickshell-kurenai"
@@ -1771,6 +1832,7 @@ cmd_rollback() {
   cmd_disable_autostart
   cmd_disable_binds
   cmd_disable_hypr
+  cmd_disable_glass
   cmd_disable
   move_aside
   reload_hypr
@@ -1816,6 +1878,7 @@ cmd_validate() {
     hook_active "$HYPR_DIR/hyprland.lua" "$MARK_BINDS" && ok "binds hook active"      || warn "binds hook not active (kurenai-ctl binds-check, then enable-binds)"
     hook_active "$HYPR_DIR/hyprland.lua" "$MARK_AUTO"  && ok "autostart hook active"  || warn "autostart hook not active (enable only after the shell works)"
     hook_active "$HYPR_DIR/hyprland.lua" "$MARK_HYPR"  && ok "display/input hook active" || ok "display/input hook not active (only needed if you use kurenai-hypr)"
+    hook_active "$HYPR_DIR/hyprland.lua" "$MARK_GLASS" && ok "glass hook active (kurenai-ctl glass-status for details)" || ok "glass hook not active (optional: hyprglass plugin, kurenai-ctl enable-glass)"
   fi
   if [ -f "$DESKTOP_FILE" ]; then
     desktop_entry_ok && ok "Settings application entry uses an absolute path" || bad "Settings application entry is not an absolute path: Rofi cannot start it (fix: kurenai-ctl desktop-entry install)"
@@ -1852,7 +1915,7 @@ cmd_validate() {
 
   echo "Lua syntax"
   if have luac; then
-    for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua kurenai-hypr.lua; do
+    for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua kurenai-hypr.lua kurenai-glass.lua; do
       [ -f "$HYPR_DIR/$f" ] && { luac -p "$HYPR_DIR/$f" 2>/dev/null && ok "$f parses" || bad "$f has a syntax error"; }
     done
   else warn "luac not installed; skipping syntax check (optional)"; fi
@@ -2090,6 +2153,9 @@ case "${1:-}" in
   settings)          shift; cmd_settings "$@" ;;
   status)            shift; cmd_status "$@" ;;
   desktop-entry)     shift; cmd_desktop_entry "$@" ;;
+  enable-glass)      cmd_enable_glass ;;
+  disable-glass)     cmd_disable_glass ;;
+  glass-status)      cmd_glass_status ;;
   enable-hypr)       cmd_enable_hypr ;;
   disable-hypr)      cmd_disable_hypr ;;
   clip)              shift; cmd_clip "$@" ;;

@@ -27,7 +27,7 @@ PanelWindow {
         id: pill
         anchors.fill: parent
         radius: Theme.rLg
-        color: Theme.panelBg
+        color: Glass.panelBg
         border.width: 1
         border.color: Theme.panelBorder
 

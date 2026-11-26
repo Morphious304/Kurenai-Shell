@@ -27,7 +27,7 @@ bash "$SRC/bin/kurenai-ctl" backup
 TS="$(date +%Y%m%d-%H%M%S)"
 REPLACED="$STATE/replaced-$TS"
 
-echo "2/6 Installing Hyprland modules (theme, binds, autostart, lock)..."
+echo "2/6 Installing Hyprland modules (theme, binds, autostart, lock, glass)..."
 # kurenai.lua is KURENAI's own; binds/autostart may have been edited by you, so those are
 # only created if missing. If yours differs, the new version is saved as <file>.new to merge by hand.
 if [ -e "$CFG/hypr/kurenai.lua" ]; then mkdir -p "$REPLACED"; mv "$CFG/hypr/kurenai.lua" "$REPLACED/"; fi
@@ -35,7 +35,7 @@ cp "$SRC/hypr/kurenai.lua" "$CFG/hypr/kurenai.lua"
 # sha256 of the kurenai-binds.lua the PREVIOUS release shipped. If yours is byte-for-byte that file you never
 # edited it, so the new one can replace it (the backup above has your copy). Anything else is kept.
 PREV_BINDS_SHA="5340e92579ad81d698ac025ea3f78592d7176cbdf77cbf676dc82856490e7884 a6498c7f57a3c3ceab2e83b8c4a3f37caf4dec01a7f7c9c51fe578048ffdbdd8"   # the two earlier releases
-for f in kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua; do
+for f in kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua kurenai-glass.lua; do
   if [ ! -e "$CFG/hypr/$f" ]; then
     cp "$SRC/hypr/$f" "$CFG/hypr/$f"
   elif ! cmp -s "$SRC/hypr/$f" "$CFG/hypr/$f"; then
@@ -143,6 +143,9 @@ echo "    1. $BIN/kurenai-ctl lock-preview     real password check in a normal w
 echo "    2. $BIN/kurenai-ctl enable-lock      then start it: $BIN/kurenai-ctl lock-start"
 echo "    3. open a second terminal on a TTY (Ctrl+Alt+F3) and keep it logged in, THEN: $BIN/kurenai-ctl lock"
 echo "    4. $BIN/kurenai-ctl lock-hypridle    for lock on idle / before sleep"
+echo
+echo "  GLASS (optional, nothing changed yet): the hyprglass plugin. One-time, as your user:  hyprpm add https://github.com/hyprnux/hyprglass && hyprpm enable hyprglass"
+echo "    then: $BIN/kurenai-ctl enable-glass   (loads it at every start + applies the KURENAI glass settings)   check: $BIN/kurenai-ctl glass-status"
 echo
 echo "  LAUNCHER TABS (new): Apps | Run | Prime | Walls. Open the launcher, then Tab / Shift+Tab or Ctrl+1..4 switch tabs."
 echo "    From a terminal:  qs -c kurenai ipc call launcher openTab run|prime|walls"

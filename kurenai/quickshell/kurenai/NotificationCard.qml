@@ -63,7 +63,7 @@ Rectangle {
     implicitWidth: Theme.notifWidth
     implicitHeight: body.implicitHeight + Theme.s3 * 2
     radius: Theme.rMd
-    color: area.containsMouse ? Qt.lighter(Theme.panelBg, 1.12) : Theme.panelBg
+    color: area.containsMouse ? Qt.lighter(Glass.panelBg, 1.12) : Glass.panelBg
     border.width: 1
     border.color: critical ? Theme.accent : Theme.panelBorder
     Behavior on color { ColorAnimation { duration: Theme.durFast } }

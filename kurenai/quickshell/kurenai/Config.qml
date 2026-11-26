@@ -73,6 +73,9 @@ Singleton {
     // ---- quick settings ---------------------------------------------------------
     // true  = hangs from the bar like the launcher; floats over a fullscreen window
     readonly property bool quickSettingsDocked: _b("quickSettingsDocked", true)
+    // Glass: 100 = the built-in solid look (bar solid, panels 95%). Lower = the bar and the panels become translucent so the
+    // hyprglass plugin (kurenai-ctl enable-glass) shows through. Without that plugin a low value only looks see-through.
+    readonly property int glassOpacity: _i("glassOpacity", 100)        // clamped to 40..100 where it is used (Glass.qml)
     readonly property int qsMaxListRows: _i("qsMaxListRows", 6)              // Wi-Fi / Bluetooth / audio device lists scroll beyond this
     // Brightness uses `brightnessctl` (class "backlight"). Leave empty for the first backlight device;
     // set a name from `brightnessctl -l` to pin one (useful on hybrid-GPU laptops with two).

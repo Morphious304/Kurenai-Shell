@@ -19,7 +19,7 @@ Shape {
 
     property real fillet: Theme.rLg
     property real corner: Theme.rLg
-    property color fillColor: Theme.bg           // must equal the bar colour (Bar.qml: Theme.bg)
+    property color fillColor: Glass.barBg         // must equal the bar colour (Bar.qml: Glass.barBg)
     property color strokeColor: Theme.border     // same hairline as the bar's bottom edge
 
     preferredRendererType: Shape.CurveRenderer   // smooth curves without MSAA (Qt 6.6+)

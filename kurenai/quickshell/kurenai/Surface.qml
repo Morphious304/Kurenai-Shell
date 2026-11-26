@@ -9,7 +9,7 @@ Rectangle {
     property bool accent: true
     property int padding: Theme.s3
 
-    color: Theme.panelBg
+    color: Glass.panelBg
     radius: Theme.rLg
     border.width: 1
     border.color: Theme.panelBorder

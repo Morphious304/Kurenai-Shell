@@ -89,6 +89,12 @@ Last resort, ends your session and loses unsaved work: `pkill -x Hyprland`.
 - **The theme of the window differs from the shell:** `kurenai-ctl lock-sync-theme` copies the main `Theme.qml` to the lock screen and the settings window.
 - **Icons are empty boxes:** install the "JetBrainsMono Nerd Font" (the shell uses it too).
 
+## Glass (hyprglass)
+- **The plugin is not loaded after login:** `kurenai-ctl glass-status` says which part is missing (hook, plugin file, a second loader, a paused plugin). Details and causes: [GLASS.md](GLASS.md).
+- **"Paused: built for Hyprland X, running Y":** `hyprpm update`, then log out and in.
+- **Loaded, but nothing looks like glass:** glass needs translucency. Bar and panels: `kurenai-conf set glassOpacity 72`. Windows: the app's own opacity (kitty: `background_opacity`).
+- **Hyprland hangs at start after enabling it:** from a TTY, `kurenai-ctl disable-glass` (it only removes one line; a copy of hyprland.lua is kept as `hyprland.lua.pre-disable-*`).
+
 ## Still stuck
 
 Send me: the output of `kurenai-ctl validate`, the first error line from `kurenai-ctl debug`, your Hyprland and Quickshell versions,

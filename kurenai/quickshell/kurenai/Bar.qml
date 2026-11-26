@@ -15,7 +15,9 @@ PanelWindow {
     anchors { top: true; left: true; right: true }
     implicitHeight: Theme.barHeight
     exclusionMode: ExclusionMode.Auto
-    color: Theme.bg
+    // The window itself is always transparent (a surface gets its alpha channel when it is created, which is before the
+    // settings file has been read); the colour is drawn by the Rectangle below, so glassOpacity can change at any time.
+    color: "transparent"
     WlrLayershell.namespace: "kurenai-bar"
 
     // "Keep awake" (quick settings). Attached to the bar because an inhibitor only counts while its
@@ -27,6 +29,12 @@ PanelWindow {
 
     readonly property var hyprMonitor: Hyprland.monitorFor(screen)
     readonly property bool wide: width >= 1100
+
+    // bar background (solid by default; translucent when Settings > glassOpacity is below 100)
+    Rectangle {
+        anchors.fill: parent
+        color: Glass.barBg
+    }
 
     // bottom hairline
     Rectangle {
