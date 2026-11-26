@@ -1,10 +1,10 @@
 # KURENAI
 
 A Japanese anime-inspired desktop shell for **Hyprland** (Lua config, 0.55 or newer) built entirely on **Quickshell**:
-top bar, notification popups and centre, application launcher, quick settings, media panel, calendar, on-screen display,
+top bar, notification popups and centre, application launcher (Apps / Run / Prime / Walls tabs), quick settings, media panel, calendar, on-screen display,
 power menu, clipboard history, system monitor, keyboard-shortcuts page and a lock screen.
 
-Rofi stays installed and bound as the fallback launcher. Everything below is reversible.
+Rofi stays installed and bound as the fallback launcher, with a matching KURENAI theme. Everything below is reversible.
 
 Written and tested against: Hyprland 0.56.2 (Lua config), Quickshell 0.3.2, Arch Linux, ThinkPad P53 (hybrid Intel/NVIDIA),
 SDDM, PipeWire, NetworkManager, kitty. Other setups may work but were not tried.
@@ -21,7 +21,7 @@ SDDM, PipeWire, NetworkManager, kitty. Other setups may work but were not tried.
 - [10. What is verified and what is not](#10-what-is-verified-and-what-is-not)
 
 Detail pages (in `docs/`): [LOCK-SCREEN](docs/LOCK-SCREEN.md), [CLIPBOARD-AND-SYSMON](docs/CLIPBOARD-AND-SYSMON.md),
-[SHORTCUTS-PAGE](docs/SHORTCUTS-PAGE.md), [PANELS](docs/PANELS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md),
+[LAUNCHER](docs/LAUNCHER.md), [SHORTCUTS-PAGE](docs/SHORTCUTS-PAGE.md), [PANELS](docs/PANELS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md),
 [CHANGELOG](docs/CHANGELOG.md).
 
 ---
@@ -59,12 +59,13 @@ for you. Commands marked **sudo** change your system; read them before running t
 
 | Package | Feature | If missing |
 |---|---|---|
-| `rofi` | fallback launcher (`SUPER + SHIFT + SPACE`, and the Quickshell launcher falls back to it) | no fallback launcher: install it, it is your safety net |
+| `rofi` | fallback launcher (`SUPER + SHIFT + SPACE`, and the Quickshell launcher falls back to it); themed by `rofi/kurenai.rasi` | no fallback launcher: install it, it is your safety net |
+| `nvidia-prime` (provides `prime-run`) | launcher **Prime** tab | the tab says it is not installed |
 | `brightnessctl` | brightness slider | row shows an install hint |
 | `power-profiles-daemon` | Saver / Balanced / Performance | section hidden |
 | `hyprsunset` | night-light tile | tile hidden |
 | `cliphist`, `wl-clipboard`, `xdg-utils` | clipboard history (`SUPER + V`) | panel explains what to install |
-| `awww` | lock-screen background follows your wallpaper | uses `Config.wallpaper`, else a generated pattern |
+| `awww` | launcher **Walls** tab sets wallpapers; lock-screen background follows your wallpaper | tab can list but not set; lock uses `Config.wallpaper`, else a generated pattern |
 | `hypridle` | lock on idle and before sleep | you lock by hand or with `SUPER + L` |
 | `fprintd` | fingerprint unlock | password only |
 | `playerctl` | your media keys, if they call it | those keys do nothing; the panel still works |
@@ -95,9 +96,10 @@ kurenai/
 │   ├── kurenai-lock-supervisor   restarts the locker if it crashes (gives up after 4 crashes in 60 s)
 │   ├── kurenai-clip              clipboard-history engine (cliphist + wl-clipboard)
 │   └── kurenai-sysmon            read-only system snapshot for the monitor panel
+├── rofi/kurenai.rasi             Rofi theme (installed to ~/.config/rofi/themes/)
 ├── hypr/                         all opt-in; only kurenai.lua is KURENAI's own
 │   ├── kurenai.lua               appearance (borders, gaps, rounding, shadow, motion)
-│   ├── kurenai-binds.lua         12 keybinds (launcher, panels, lock, clipboard, monitor, shortcuts)
+│   ├── kurenai-binds.lua         15 keybinds (launcher + its Run/Prime/Walls tabs, panels, lock, clipboard, monitor, shortcuts)
 │   ├── kurenai-autostart.lua     start the shell with the session
 │   ├── kurenai-lock.lua          lock-screen crash recovery + supervisor start
 │   └── hypridle.kurenai.conf     SAMPLE only: lock on idle / before sleep
@@ -109,7 +111,9 @@ kurenai/
 │   │   ├── UiState.qml           which panel is open       Compositor.qml  Hyprland dispatch, focused screen
 │   │   ├── Bar.qml  Workspaces.qml  WindowTitle.qml  SysStatus.qml  Tray.qml  Clock.qml  BarItem.qml  Divider.qml  Emblem.qml
 │   │   ├── NotificationStore.qml (the one notification state)  NotificationCard / Popups / Center.qml
-│   │   ├── Apps.qml  Launcher.qml                      desktop-entry index and the launcher
+│   │   ├── Apps.qml  Launcher.qml                      desktop-entry index and the launcher (tab host)
+│   │   ├── LauncherList.qml  LauncherRun.qml  LauncherWalls.qml   the tabs (Apps+Prime share one list)
+│   │   ├── Runner.qml  Walls.qml                       Run tab backend; wallpaper scan and awww calls
 │   │   ├── QuickSettings.qml  Audio.qml  System.qml    quick settings and the state behind it
 │   │   ├── Media.qml  MediaPanel.qml                   MPRIS
 │   │   ├── CalendarPanel.qml  Power.qml  PowerMenu.qml  OsdState.qml  OsdWindow.qml
@@ -133,8 +137,9 @@ Where things land after `install.sh`:
 |---|---|
 | `quickshell/kurenai`, `quickshell/kurenai-lock` | `~/.config/quickshell/` |
 | `hypr/*.lua`, `hypr/hypridle.kurenai.conf` | `~/.config/hypr/` |
+| `rofi/kurenai.rasi` | `~/.config/rofi/themes/` |
 | `bin/*` | `~/.local/bin/` (put it on your `PATH`) |
-| backups, notes, favourites | `~/.local/share/kurenai/` |
+| backups, notes, favourites, Run history | `~/.local/share/kurenai/` |
 
 Keep this package folder: the `docs/` pages are read from here.
 
@@ -235,7 +240,10 @@ static copy of what `kurenai-binds.lua` ships.
 | Keys | Does |
 |---|---|
 | `SUPER + SPACE` | application launcher (falls back to Rofi if the shell is not running) |
-| `SUPER + SHIFT + SPACE` | Rofi directly |
+| `SUPER + SHIFT + SPACE` | Rofi directly (KURENAI theme if installed) |
+| `SUPER + SHIFT + R` | launcher on the **Run** tab |
+| `SUPER + SHIFT + P` | launcher on the **Prime** tab (apps on the NVIDIA GPU) |
+| `SUPER + SHIFT + W` | launcher on the **Walls** tab (wallpaper switcher) |
 | `SUPER + N` | notification centre |
 | `SUPER + SHIFT + N` | Do Not Disturb on/off |
 | `SUPER + A` | quick settings |
@@ -251,7 +259,7 @@ Inside panels (every panel: `Esc` closes, click outside closes):
 
 | Panel | Keys |
 |---|---|
-| Launcher | type to filter, `Up/Down` or `Ctrl+N/P/J/K` move, `Enter` launches, `Ctrl+F` favourite |
+| Launcher | type to filter, `Up/Down` or `Ctrl+N/P/J/K` move, `Enter` launches, `Ctrl+F` favourite, `Tab` / `Ctrl+1..4` switch tab. Other tabs: [docs/LAUNCHER.md](docs/LAUNCHER.md) |
 | Clipboard | `Enter` copies the entry back (paste with your usual `Ctrl+V`), `Ctrl+P` pin, `Shift+Delete` delete, `Tab` History/Pinned |
 | Shortcuts | type to filter (every word must match), `Up/Down`, `PageUp/PageDown`, `Home/End` |
 | Calendar | arrows move the selected day, `PageUp/PageDown` change month, `Home` goes to today |
@@ -264,6 +272,7 @@ IPC (the keybinds use these; verify the real list with `qs -c kurenai ipc show`)
 
 ```
 qs -c kurenai ipc call launcher toggle|open|close
+qs -c kurenai ipc call launcher openTab|toggleTab apps|run|prime|walls
 qs -c kurenai ipc call notifications toggle|open|close|dnd|clear
 qs -c kurenai ipc call quicksettings toggle|open|close
 qs -c kurenai ipc call media toggle|playpause|next|previous
@@ -295,6 +304,7 @@ Quickshell reloads QML when you save a file, so most changes appear immediately.
 | Panels hang from the bar or float | `Config.qml`: `launcherDocked`, `quickSettingsDocked`, `popoverDocked` | |
 | Brightness curve | `Config.qml`: `brightnessExponent`, `brightnessMin` | must equal the `-eN -nM` your brightness keys use |
 | Clipboard retention / disable | `Config.qml`: `clipboardRetentionDays`, `clipboardEnabled` | |
+| Wallpaper folders, transition, grid size; Run history | `Config.qml`: `wallpaperDirs`, `wallpaperTransition`, `wallpaperColumns`, `runHistory`... | [docs/LAUNCHER.md](docs/LAUNCHER.md) |
 | Where the shortcuts page reads | `Config.qml`: `hyprMainFile` | only if your config is not at `~/.config/hypr/hyprland.lua` |
 | Window borders, gaps, rounding, blur | top of `~/.config/hypr/kurenai.lua` and the values below it | `ENABLE_BLUR` is off: it costs GPU on hybrid-graphics laptops. `FLOAT_ACCENT` gives floating windows a teal frame |
 | Keybinds | `~/.config/hypr/kurenai-binds.lua` | one `{ "CHORD", command }` per line; then `hyprctl reload` |
@@ -308,7 +318,9 @@ Your edits live in your installed copy; an update moves it aside (section 4), so
 
 | What | Where | Notes |
 |---|---|---|
-| Launcher favourites and recents | `~/.local/share/kurenai/launcher.json` | desktop-entry ids only. Reset: `kurenai-ctl reset-launcher` |
+| Launcher favourites and recents (Apps and Prime) | `~/.local/share/kurenai/launcher.json` | desktop-entry ids only. Reset: `kurenai-ctl reset-launcher` |
+| Run-tab command history | `~/.local/share/kurenai/runhistory.json` (mode 600) | the last 50 commands you ran from the Run tab; a command starting with a space is never saved; `Config.runHistory = false` saves none. Reset: `kurenai-ctl reset-launcher` |
+| Current wallpaper | awww's own cache (`~/.cache/awww`) | KURENAI saves nothing about wallpapers |
 | Notification history | memory only | gone when Quickshell stops |
 | Clipboard history | `~/.cache/cliphist/db` (mode 600) | 30 days, then deleted. Pause or wipe any time. [Details](docs/CLIPBOARD-AND-SYSMON.md) |
 | Clipboard pins | `~/.local/share/kurenai/clipboard/pins/` (mode 700) | until you remove them |
@@ -382,7 +394,8 @@ Against the original project's "definition of done":
 |---|---|
 | Palette and consistency across bar and panels | one `Theme.qml`; artboard of every panel published |
 | Bar shows real information; workspaces reflect Hyprland and switch | implemented; confirm on your screen |
-| Launcher discovers installed apps; Rofi remains | implemented; Rofi untouched |
+| Launcher discovers installed apps; Rofi remains | implemented; Rofi untouched, plus an optional matching theme |
+| Launcher tabs: Apps, Run, Prime, Walls | written and syntax/logic-checked in a sandbox; **not run on a real desktop by me**, see [docs/LAUNCHER.md](docs/LAUNCHER.md) |
 | Notifications, history, Do Not Disturb share one state | implemented (`NotificationStore.qml`) |
 | Quick settings act on real devices, hide what is missing | implemented; per-control behaviour in the table in section 1 |
 | Works on laptop screen and external monitor | designed for it; not tested here |

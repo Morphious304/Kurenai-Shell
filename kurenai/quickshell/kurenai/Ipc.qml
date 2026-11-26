@@ -5,7 +5,9 @@ import Quickshell.Io
 // Command-line control of the running shell, used by the Hyprland keybinds.
 // One shell process owns these; the binds just talk to it:
 //
-//   qs -c kurenai ipc call launcher toggle
+//   qs -c kurenai ipc call launcher toggle|open|close
+//   qs -c kurenai ipc call launcher openTab apps|run|prime|walls     (open on that tab)
+//   qs -c kurenai ipc call launcher toggleTab apps|run|prime|walls   (same key again closes it)
 //   qs -c kurenai ipc call notifications toggle
 //   qs -c kurenai ipc call notifications dnd          (toggle Do Not Disturb)
 //   qs -c kurenai ipc call notifications clear
@@ -25,6 +27,8 @@ Scope {
         function toggle(): void { UiState.toggleLauncher(); }
         function open(): void { UiState.openLauncher(); }
         function close(): void { UiState.launcherOpen = false; }
+        function openTab(tab: string): void { UiState.openLauncherTab(tab); }
+        function toggleTab(tab: string): void { UiState.toggleLauncherTab(tab); }
     }
 
     IpcHandler {

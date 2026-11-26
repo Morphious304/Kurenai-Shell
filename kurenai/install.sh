@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KURENAI installer (phase 4a.6). Copies files into place after a backup. It does NOT edit hyprland.lua and does
+# KURENAI installer (launcher tabs + Rofi theme). Copies files into place after a backup. It does NOT edit hyprland.lua and does
 # NOT start anything; those are separate, explicit steps (see README / kurenai-ctl).
 set -euo pipefail
 
@@ -32,12 +32,20 @@ echo "2/5 Installing Hyprland modules (theme, binds, autostart, lock)..."
 # only created if missing. If yours differs, the new version is saved as <file>.new to merge by hand.
 if [ -e "$CFG/hypr/kurenai.lua" ]; then mkdir -p "$REPLACED"; mv "$CFG/hypr/kurenai.lua" "$REPLACED/"; fi
 cp "$SRC/hypr/kurenai.lua" "$CFG/hypr/kurenai.lua"
+# sha256 of the kurenai-binds.lua the PREVIOUS release shipped. If yours is byte-for-byte that file you never
+# edited it, so the new one can replace it (the backup above has your copy). Anything else is kept.
+PREV_BINDS_SHA="a6498c7f57a3c3ceab2e83b8c4a3f37caf4dec01a7f7c9c51fe578048ffdbdd8"
 for f in kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua; do
   if [ ! -e "$CFG/hypr/$f" ]; then
     cp "$SRC/hypr/$f" "$CFG/hypr/$f"
   elif ! cmp -s "$SRC/hypr/$f" "$CFG/hypr/$f"; then
-    cp "$SRC/hypr/$f" "$CFG/hypr/$f.new"
-    echo "     kept your existing $f; new version saved as $f.new (diff $CFG/hypr/$f $CFG/hypr/$f.new)"
+    if [ "$f" = "kurenai-binds.lua" ] && [ "$(sha256sum "$CFG/hypr/$f" | cut -d' ' -f1)" = "$PREV_BINDS_SHA" ]; then
+      cp "$SRC/hypr/$f" "$CFG/hypr/$f"
+      echo "     $f was the unmodified previous version: updated (adds the Run / Prime / Walls keys; your old copy is in the backup)"
+    else
+      cp "$SRC/hypr/$f" "$CFG/hypr/$f.new"
+      echo "     kept your existing $f; new version saved as $f.new (diff $CFG/hypr/$f $CFG/hypr/$f.new)"
+    fi
   fi
 done
 
@@ -64,10 +72,21 @@ install -m 0755 "$SRC/bin/kurenai-sysmon" "$BIN/kurenai-sysmon"      # read-only
 mkdir -p "$STATE/clipboard/pins" && chmod 700 "$STATE/clipboard" "$STATE/clipboard/pins"   # pins/history metadata: private
 cp "$SRC/hypr/hypridle.kurenai.conf" "$CFG/hypr/hypridle.kurenai.conf"      # a sample only; see: kurenai-ctl lock-hypridle
 
-echo "5/5 Preparing launcher storage..."
+echo "5/5 Preparing launcher storage and the Rofi theme..."
 if [ ! -f "$STATE/launcher.json" ]; then
-  printf '{\n  "favorites": [],\n  "recent": []\n}\n' > "$STATE/launcher.json"
+  printf '{\n  "favorites": [],\n  "recent": [],\n  "primeFavorites": [],\n  "primeRecent": []\n}\n' > "$STATE/launcher.json"
 fi
+# the Run tab's command history can contain secrets typed into commands: private to you from the start
+if [ ! -f "$STATE/runhistory.json" ]; then
+  ( umask 077; printf '{\n  "commands": []\n}\n' > "$STATE/runhistory.json" )
+fi
+chmod 600 "$STATE/runhistory.json" 2>/dev/null || true
+# Rofi theme: a file of its own in ~/.config/rofi/themes. Your config.rasi is never touched.
+mkdir -p "$CFG/rofi/themes"
+if [ -e "$CFG/rofi/themes/kurenai.rasi" ] && ! cmp -s "$SRC/rofi/kurenai.rasi" "$CFG/rofi/themes/kurenai.rasi"; then
+  mkdir -p "$REPLACED"; mv "$CFG/rofi/themes/kurenai.rasi" "$REPLACED/rofi-kurenai.rasi"
+fi
+cp "$SRC/rofi/kurenai.rasi" "$CFG/rofi/themes/kurenai.rasi"
 
 echo
 echo "Installed. Nothing has been activated or started."
@@ -83,7 +102,14 @@ echo "    2. $BIN/kurenai-ctl enable-lock      then start it: $BIN/kurenai-ctl l
 echo "    3. open a second terminal on a TTY (Ctrl+Alt+F3) and keep it logged in, THEN: $BIN/kurenai-ctl lock"
 echo "    4. $BIN/kurenai-ctl lock-hypridle    for lock on idle / before sleep"
 echo
-echo "  SHORTCUTS PAGE (new): works right away from a terminal:  qs -c kurenai ipc call shortcuts toggle"
+echo "  LAUNCHER TABS (new): Apps | Run | Prime | Walls. Open the launcher, then Tab / Shift+Tab or Ctrl+1..4 switch tabs."
+echo "    From a terminal:  qs -c kurenai ipc call launcher openTab run|prime|walls"
+echo "    Keys (in kurenai-binds.lua): SUPER+SHIFT+R Run, SUPER+SHIFT+P Prime, SUPER+SHIFT+W Walls"
+echo "    Prime needs prime-run (pacman -S nvidia-prime); Walls needs awww (and finds images under ~/Pictures/Wallpapers, subfolders included)."
+echo "  ROFI THEME (new): installed to $CFG/rofi/themes/kurenai.rasi. Try:  rofi -show drun -show-icons -theme kurenai"
+echo "    Make it Rofi's default:  $BIN/kurenai-ctl rofi-theme   (prints the one line to add; nothing edits your Rofi config)"
+echo
+echo "  SHORTCUTS PAGE: works right away from a terminal:  qs -c kurenai ipc call shortcuts toggle"
 if ! grep -q 'shortcuts toggle' "$CFG/hypr/kurenai-binds.lua" 2>/dev/null; then
   echo "  For a key, add ONE line to the table in $CFG/hypr/kurenai-binds.lua (after the SUPER + L line):"
   echo '      { "SUPER + SLASH",         QS .. "shortcuts toggle" },'

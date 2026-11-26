@@ -14,6 +14,24 @@ Singleton {
     // false = old behaviour, always a floating card
     readonly property bool launcherDocked: true
 
+    // ---- launcher tabs (Apps | Run | Prime | Walls) -----------------------------------------
+    // Run tab: commands you type are remembered locally (a small file only you can read).
+    // A command that starts with a space is never remembered. false = remember nothing.
+    readonly property bool runHistory: true
+    readonly property int runHistoryMax: 50
+    // Prime tab: the wrapper that sends an app to the NVIDIA GPU (package `nvidia-prime` on Arch).
+    readonly property string primeCommand: "prime-run"
+    // Walls tab: every image under these folders, subfolders included. "~" means your home folder.
+    readonly property var wallpaperDirs: ["~/Pictures/Wallpapers"]
+    readonly property var wallpaperExtensions: ["jpg", "jpeg", "png", "webp", "gif", "bmp", "tga", "tiff"]
+    // awww transition: none simple fade left right top bottom wipe wave grow center any outer random
+    readonly property string wallpaperTransition: "random"
+    readonly property real wallpaperTransitionDuration: 0    // seconds; 0 = awww's own default (3)
+    readonly property int wallpaperColumns: 3
+    readonly property int wallpaperVisibleRows: 3
+    readonly property int wallpaperThumbDelay: 90            // ms a cell must stay on screen before its thumbnail is decoded
+    readonly property bool wallpaperAnimatePreview: true     // the big preview (Ctrl+E) plays animated GIFs
+
     // ---- quick settings ---------------------------------------------------------
     // true  = hangs from the bar like the launcher; floats over a fullscreen window
     readonly property bool quickSettingsDocked: true

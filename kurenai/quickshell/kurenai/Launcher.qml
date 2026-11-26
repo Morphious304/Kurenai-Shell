@@ -2,11 +2,19 @@ import QtQuick
 import Quickshell
 import Quickshell.Widgets
 
-// KURENAI launcher. Real desktop entries from DesktopEntries (see Apps.qml).
-//   type       filter          Up/Down, Ctrl+N/P, Ctrl+J/K   move
-//   Enter      launch          Ctrl+F                        favourite / unfavourite
-//   Esc        close           click outside                 close
-// Opened from Hyprland with: qs -c kurenai ipc call launcher toggle
+// KURENAI launcher with four tabs. The host (this file) owns the search field, the tab strip and the keys;
+// each tab is its own view, loaded only while it is the active one:
+//   Apps   LauncherList (mode "apps")    your desktop entries
+//   Run    LauncherRun                   type a command, or pick from history / programs on PATH
+//   Prime  LauncherList (mode "prime")   the same apps, started through `prime-run` (NVIDIA)
+//   Walls  LauncherWalls                 wallpaper thumbnails; Enter sets one with awww
+//
+//   Tab / Shift+Tab  next / previous tab        Ctrl+1 .. Ctrl+4   jump to a tab
+//   type             filter                     Up/Down, Ctrl+N/P, Ctrl+J/K   move   (Walls: arrows move in the grid)
+//   Enter            run / launch / set         Shift+Enter        alternate (Run: in terminal, Walls: set and stay open)
+//   Ctrl+F           favourite (Run: forget)    Ctrl+E             Run: edit the row, Walls: big preview
+//   Esc              close (Walls: closes the preview first)      click outside   close
+// Opened from Hyprland with: qs -c kurenai ipc call launcher toggle|toggleTab <tab>
 PanelOverlay {
     id: root
 
@@ -15,23 +23,36 @@ PanelOverlay {
     layerName: "kurenai-launcher"
     onDismissed: UiState.launcherOpen = false
 
+    readonly property var tabs: [
+        { id: "apps",  label: "Apps",  placeholder: "Search applications" },
+        { id: "run",   label: "Run",   placeholder: "Run a command" },
+        { id: "prime", label: "Prime", placeholder: "Search applications to run on the NVIDIA GPU" },
+        { id: "walls", label: "Walls", placeholder: "Filter wallpapers by name or folder" }
+    ]
+    readonly property string tab: UiState.launcherTab
+    readonly property int tabIndex: {
+        for (let i = 0; i < tabs.length; i++) if (tabs[i].id === tab) return i;
+        return 0;
+    }
+
+    function setTab(id) {
+        UiState.launcherTab = id;
+        input.forceActiveFocus();
+    }
+    function cycleTab(d) {
+        setTab(tabs[(tabIndex + d + tabs.length) % tabs.length].id);
+    }
+
     // fresh state every time it opens
     onOpenChanged: {
         if (open) {
             input.text = "";
-            results.currentIndex = 0;
             // the layer surface is mapped a moment after `open` flips; focus once it is
-            Qt.callLater(() => input.forceActiveFocus());
+            Qt.callLater(() => {
+                input.forceActiveFocus();
+                if (view.item) view.item.reset();
+            });
         }
-    }
-
-    readonly property var found: Apps.search(input.text)
-
-    function launchCurrent() {
-        const e = found[results.currentIndex];
-        if (!e) return;
-        Apps.launch(e);
-        UiState.launcherOpen = false;
     }
 
     // docked = hangs from the bar with concave fillets; otherwise (fullscreen window, or
@@ -65,7 +86,7 @@ PanelOverlay {
             id: body
             x: root.docked ? root.fillet : 0
             width: Theme.launcherWidth
-            height: (Theme.s3 + 2) + bar.height + Theme.s2 + listArea.height + footer.height
+            height: (Theme.s3 + 2) + bar.height + Theme.s2 + tabStrip.height + Theme.s1 + listArea.height + footer.height
 
             // ---- search field -------------------------------------------------------------------
             Rectangle {
@@ -81,16 +102,17 @@ PanelOverlay {
                 Text {
                     id: glyph
                     anchors { left: parent.left; leftMargin: Theme.s3; verticalCenter: parent.verticalCenter }
-                    text: Theme.icons.search
-                    font.family: Theme.fontIcon
-                    font.pixelSize: Theme.fsIcon
+                    text: root.tab === "run" ? ">" : Theme.icons.search
+                    font.family: root.tab === "run" ? Theme.fontMono : Theme.fontIcon
+                    font.pixelSize: root.tab === "run" ? Theme.fsBase + 2 : Theme.fsIcon
+                    font.weight: root.tab === "run" ? Font.Bold : Font.Normal
                     color: input.activeFocus ? Theme.accentText : Theme.muted
                 }
 
                 TextInput {
                     id: input
                     anchors { left: glyph.right; right: seal.left; leftMargin: Theme.s3; rightMargin: Theme.s3; verticalCenter: parent.verticalCenter }
-                    font.family: Theme.fontUi
+                    font.family: root.tab === "run" ? Theme.fontMono : Theme.fontUi
                     font.pixelSize: Theme.fsBase + 2
                     color: Theme.text
                     selectionColor: Theme.accent
@@ -99,30 +121,54 @@ PanelOverlay {
                     clip: true
                     focus: true
 
-                    onTextChanged: results.currentIndex = 0
-
                     Keys.onPressed: e => {
                         const ctrl = e.modifiers & Qt.ControlModifier;
+                        const shift = e.modifiers & Qt.ShiftModifier;
+                        const v = view.item;
+
+                        // ---- tabs (work on every tab) ----
+                        if (e.key === Qt.Key_Tab) { root.cycleTab(1); e.accepted = true; return; }
+                        if (e.key === Qt.Key_Backtab) { root.cycleTab(-1); e.accepted = true; return; }
+                        if (ctrl && e.key >= Qt.Key_1 && e.key < Qt.Key_1 + root.tabs.length) {
+                            root.setTab(root.tabs[e.key - Qt.Key_1].id);
+                            e.accepted = true;
+                            return;
+                        }
+                        if (!v) return;
+
+                        // Esc: a tab may use it first (the wallpaper preview); otherwise it closes the launcher
+                        if (e.key === Qt.Key_Escape) { if (v.back()) e.accepted = true; return; }
+
+                        const grid = root.tab === "walls";
                         if (e.key === Qt.Key_Down || (ctrl && (e.key === Qt.Key_N || e.key === Qt.Key_J))) {
-                            results.currentIndex = Math.min(results.count - 1, results.currentIndex + 1);
-                            e.accepted = true;
+                            v.move(0, 1); e.accepted = true;
                         } else if (e.key === Qt.Key_Up || (ctrl && (e.key === Qt.Key_P || e.key === Qt.Key_K))) {
-                            results.currentIndex = Math.max(0, results.currentIndex - 1);
-                            e.accepted = true;
+                            v.move(0, -1); e.accepted = true;
+                        } else if (grid && e.key === Qt.Key_Left) {
+                            v.move(-1, 0); e.accepted = true;
+                        } else if (grid && e.key === Qt.Key_Right) {
+                            v.move(1, 0); e.accepted = true;
+                        } else if (e.key === Qt.Key_PageDown) {
+                            v.page(1); e.accepted = true;
+                        } else if (e.key === Qt.Key_PageUp) {
+                            v.page(-1); e.accepted = true;
                         } else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
-                            root.launchCurrent();
-                            e.accepted = true;
+                            v.activate(!!shift); e.accepted = true;
                         } else if (ctrl && e.key === Qt.Key_F) {
-                            const en = root.found[results.currentIndex];
-                            if (en) Apps.toggleFavorite(en.id);
-                            e.accepted = true;
+                            v.star(); e.accepted = true;
+                        } else if (ctrl && e.key === Qt.Key_E) {
+                            v.expand(); e.accepted = true;
+                        } else if (grid && e.key === Qt.Key_Space && !ctrl && v.spaceKey()) {
+                            e.accepted = true;     // Space on an empty filter = preview; otherwise it types a space
                         }
                     }
 
                     Text {
                         visible: input.text === ""
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Search applications"
+                        width: parent.width
+                        elide: Text.ElideRight
+                        text: root.tabs[root.tabIndex].placeholder
                         font: input.font
                         color: Theme.muted
                     }
@@ -138,7 +184,7 @@ PanelOverlay {
                     color: Theme.accent
                     Text {
                         anchors.centerIn: parent
-                        text: "\u7D05"
+                        text: "紅"
                         font.family: Theme.fontDisplay
                         font.pixelSize: 14
                         font.weight: Font.Bold
@@ -147,145 +193,81 @@ PanelOverlay {
                 }
             }
 
-            // ---- results -----------------------------------------------------------------------------
-            Item {
-                id: listArea
-                anchors { top: bar.bottom; left: parent.left; right: parent.right; topMargin: Theme.s2; leftMargin: Theme.s2; rightMargin: Theme.s2 }
-                height: Math.max(results.count > 0 ? Math.min(results.count, Config.launcherVisibleRows) * Theme.launcherRowHeight : 96, 96)
+            // ---- tab strip -------------------------------------------------------------------------
+            Row {
+                id: tabStrip
+                anchors { top: bar.bottom; left: parent.left; right: parent.right; topMargin: Theme.s2; leftMargin: Theme.s3; rightMargin: Theme.s3 }
+                height: 28
+                spacing: Theme.s1
 
-                ListView {
-                    id: results
-                    anchors.fill: parent
-                    clip: true
-                    visible: count > 0
-                    boundsBehavior: Flickable.StopAtBounds
-                    highlightFollowsCurrentItem: true
-                    highlightMoveDuration: 90
-                    currentIndex: 0
-                    onCurrentIndexChanged: positionViewAtIndex(currentIndex, ListView.Contain)
-                    model: ScriptModel { values: root.found }
-
-                    highlight: Rectangle {
-                        radius: Theme.rMd
-                        color: Theme.raised
-                        Rectangle {      // vermilion selection rule
-                            anchors { left: parent.left; top: parent.top; bottom: parent.bottom; topMargin: 8; bottomMargin: 8 }
-                            width: 3
-                            radius: 1.5
-                            color: Theme.accent
-                        }
-                    }
-
+                Repeater {
+                    model: root.tabs
                     delegate: Item {
-                        id: row
+                        id: tabBtn
                         required property var modelData
                         required property int index
-                        width: results.width
-                        height: Theme.launcherRowHeight
+                        readonly property bool active: index === root.tabIndex
+                        width: (tabStrip.width - tabStrip.spacing * (root.tabs.length - 1)) / root.tabs.length
+                        height: tabStrip.height
 
-                        readonly property bool fav: Apps.isFavorite(modelData.id)
-
-                        Row {
-                            anchors { fill: parent; leftMargin: Theme.s4; rightMargin: Theme.s3 }
-                            spacing: Theme.s3
-
-                            Item {
-                                width: 28
-                                height: parent.height
-                                IconImage {
-                                    anchors.centerIn: parent
-                                    implicitSize: 26
-                                    source: row.modelData.icon ? Quickshell.iconPath(row.modelData.icon) : ""
-                                    visible: row.modelData.icon !== ""
-                                }
-                                Rectangle {      // missing icon: rose initial tile
-                                    visible: !row.modelData.icon
-                                    anchors.centerIn: parent
-                                    width: 26; height: 26
-                                    radius: Theme.rSm
-                                    color: Theme.raised
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: row.modelData.name.charAt(0).toUpperCase()
-                                        font.family: Theme.fontUi
-                                        font.pixelSize: Theme.fsBase
-                                        font.weight: Font.Bold
-                                        color: Theme.rose
-                                    }
-                                }
-                            }
-
-                            Column {
-                                width: parent.width - 28 - Theme.s3 * 2 - 18
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 1
-                                Text {
-                                    width: parent.width
-                                    text: row.modelData.name
-                                    textFormat: Text.PlainText
-                                    elide: Text.ElideRight
-                                    font.family: Theme.fontUi
-                                    font.pixelSize: Theme.fsBase + 1
-                                    font.weight: Font.Medium
-                                    color: Theme.text
-                                }
-                                Text {
-                                    width: parent.width
-                                    visible: text !== ""
-                                    text: row.modelData.genericName || row.modelData.comment || ""
-                                    textFormat: Text.PlainText
-                                    elide: Text.ElideRight
-                                    font.family: Theme.fontUi
-                                    font.pixelSize: Theme.fsSmall
-                                    color: Theme.teal
-                                }
-                            }
-
-                            Text {      // favourite marker
-                                width: 18
-                                anchors.verticalCenter: parent.verticalCenter
-                                horizontalAlignment: Text.AlignRight
-                                visible: row.fav
-                                text: Theme.icons.star
-                                font.family: Theme.fontIcon
-                                font.pixelSize: 12
-                                color: Theme.amber
-                            }
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: Theme.rSm
+                            color: tabBtn.active ? Theme.raised : (hover.containsMouse ? Theme.surface : "transparent")
+                            Behavior on color { ColorAnimation { duration: Theme.durFast } }
                         }
-
+                        Text {
+                            anchors.centerIn: parent
+                            text: tabBtn.modelData.label
+                            font.family: Theme.fontUi
+                            font.pixelSize: Theme.fsBase
+                            font.weight: tabBtn.active ? Font.DemiBold : Font.Normal
+                            color: tabBtn.active ? Theme.text : Theme.muted
+                        }
+                        Rectangle {      // vermilion rule under the active tab
+                            visible: tabBtn.active
+                            anchors { bottom: parent.bottom; horizontalCenter: parent.horizontalCenter }
+                            width: parent.width - Theme.s6
+                            height: 2
+                            radius: 1
+                            color: Theme.accent
+                        }
                         MouseArea {
+                            id: hover
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onEntered: results.currentIndex = row.index
-                            onClicked: { results.currentIndex = row.index; root.launchCurrent(); }
+                            onClicked: root.setTab(tabBtn.modelData.id)
                         }
                     }
                 }
+            }
 
-                // empty state
-                Column {
-                    visible: results.count === 0
-                    anchors.centerIn: parent
-                    spacing: Theme.s1
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: "No applications match \u201C" + input.text.trim() + "\u201D"
-                        textFormat: Text.PlainText
-                        elide: Text.ElideRight
-                        width: Math.min(implicitWidth, listArea.width - Theme.s6)
-                        font.family: Theme.fontUi
-                        font.pixelSize: Theme.fsBase
-                        color: Theme.text2
-                    }
-                    Text {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        text: Apps.all.length === 0 ? "No desktop entries found on this system." : "Check the spelling, or try the Rofi fallback."
-                        font.family: Theme.fontUi
-                        font.pixelSize: Theme.fsSmall
-                        color: Theme.muted
+            // ---- the active tab ----------------------------------------------------------------------
+            Item {
+                id: listArea
+                anchors { top: tabStrip.bottom; left: parent.left; right: parent.right; topMargin: Theme.s1; leftMargin: Theme.s2; rightMargin: Theme.s2 }
+                height: view.item ? view.item.areaHeight : 96
+
+                Loader {
+                    id: view
+                    anchors.fill: parent
+                    // unloaded shortly after the panel has faded out, so thumbnails do not stay in memory
+                    active: root.visible
+                    sourceComponent: root.tab === "run" ? runC
+                                   : root.tab === "prime" ? primeC
+                                   : root.tab === "walls" ? wallsC : appsC
+                }
+                Component { id: appsC;  LauncherList { mode: "apps";  query: input.text } }
+                Component { id: primeC; LauncherList { mode: "prime"; query: input.text } }
+                Component {
+                    id: runC
+                    LauncherRun {
+                        query: input.text
+                        onEditRequested: t => { input.text = t; input.cursorPosition = t.length; }
                     }
                 }
+                Component { id: wallsC; LauncherWalls { query: input.text } }
             }
 
             // ---- key hints ---------------------------------------------------------------------------------
@@ -295,8 +277,9 @@ PanelOverlay {
                 height: 30
                 Rectangle { anchors { top: parent.top; left: parent.left; right: parent.right; leftMargin: Theme.s3; rightMargin: Theme.s3 } height: 1; color: Theme.border }
                 Text {
-                    anchors { left: parent.left; leftMargin: Theme.s4; verticalCenter: parent.verticalCenter; verticalCenterOffset: 1 }
-                    text: "\u21B5 launch   \u2191\u2193 move   Ctrl+F favourite   Esc close"
+                    anchors { left: parent.left; right: parent.right; leftMargin: Theme.s4; rightMargin: Theme.s3; verticalCenter: parent.verticalCenter; verticalCenterOffset: 1 }
+                    elide: Text.ElideRight
+                    text: view.item ? view.item.hint : ""
                     font.family: Theme.fontMono
                     font.pixelSize: Theme.fsSmall - 1
                     color: Theme.muted

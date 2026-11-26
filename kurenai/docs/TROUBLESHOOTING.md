@@ -48,6 +48,19 @@ owns the notification service. Logs: `kurenai-ctl logs` (the running shell), `ku
 | Clipboard panel says it needs setup | `sudo pacman -S cliphist wl-clipboard xdg-utils`, then `kurenai-ctl restart` |
 | Shortcuts page is missing rows | `kurenai-ctl shortcuts` lists every file read and each warning with `file:line` |
 
+## Launcher tabs
+
+| Symptom | Fix |
+|---|---|
+| Prime tab says `prime-run` was not found | `sudo pacman -S nvidia-prime`, then reopen the tab. `kurenai-ctl validate` shows what it found |
+| An app started from Prime does not use the NVIDIA GPU | the tab only starts it through `prime-run`; Flatpak apps are sandboxed and may ignore it. Check with `nvidia-smi` |
+| Walls tab: "No wallpapers found" | the message names the folder it looked in. Fix `Config.wallpaperDirs`; `kurenai-ctl validate` counts the images |
+| Walls tab: "awww is installed but not answering" | start the daemon (`awww-daemon`, normally from your autostart) |
+| Wallpaper does not change on Enter | the line under the grid says why. Test by hand: `awww img -t random /path/to/image` |
+| Thumbnails blank or slow | blank = not decoded yet (they load 90 ms after a cell stays visible) or an unreadable file. Raise `wallpaperThumbDelay` or lower `wallpaperVisibleRows` for huge folders |
+| Rofi theme not used | `kurenai-ctl rofi-theme` shows the file, whether `config.rasi` uses it, and the one line to add |
+| A command typed in Run is in the history and should not be | `Ctrl+F` on that row forgets it; `kurenai-ctl reset-launcher` wipes all of it. Start a command with a space to keep it out |
+
 ## The lock screen
 
 The short version: if the screen is stuck, press `Ctrl+Alt+F3`, log in, run `kurenai-ctl lock-recover`, switch back with

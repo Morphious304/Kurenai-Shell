@@ -10,6 +10,7 @@ Singleton {
     property bool quickSettingsOpen: false
     property bool notificationsOpen: false
     property bool launcherOpen: false
+    property string launcherTab: "apps"      // "apps" | "run" | "prime" | "walls"
     property bool mediaOpen: false
     property bool calendarOpen: false
     property bool powerMenuOpen: false
@@ -36,13 +37,24 @@ Singleton {
 
     function toggleQuickSettings() { const v = !quickSettingsOpen; closeAll(); quickSettingsOpen = v; }
     function toggleNotifications() { const v = !notificationsOpen; closeAll(); notificationsOpen = v; }
-    function toggleLauncher()      { const v = !launcherOpen;      closeAll(); launcherOpen = v; }
+    function toggleLauncher()      { const v = !launcherOpen;      closeAll(); if (v) launcherTab = "apps"; launcherOpen = v; }
     function toggleMedia()         { const v = !mediaOpen;         closeAll(); mediaOpen = v; }
     function toggleCalendar()      { const v = !calendarOpen;      closeAll(); calendarOpen = v; }
     function togglePowerMenu()     { const v = !powerMenuOpen;     closeAll(); powerMenuOpen = v; }
     function toggleClipboard()     { const v = !clipboardOpen;     closeAll(); clipboardOpen = v; }
     function toggleSysmon()        { const v = !sysmonOpen;        closeAll(); sysmonOpen = v; }
     function toggleShortcuts()     { const v = !shortcutsOpen;     closeAll(); shortcutsOpen = v; }
-    function openLauncher()        { closeAll(); launcherOpen = true; }
+    function openLauncher()        { closeAll(); launcherTab = "apps"; launcherOpen = true; }
+    readonly property var launcherTabs: ["apps", "run", "prime", "walls"]
+    function validTab(t)           { return launcherTabs.indexOf(t) >= 0; }
+    // open the launcher on a given tab (unknown names fall back to "apps")
+    function openLauncherTab(t)    { closeAll(); launcherTab = validTab(t) ? t : "apps"; launcherOpen = true; }
+    // same key twice closes it; a different tab key while it is open just switches tab
+    function toggleLauncherTab(t) {
+        const tab = validTab(t) ? t : "apps";
+        if (launcherOpen && launcherTab === tab) { launcherOpen = false; return; }
+        if (launcherOpen) { launcherTab = tab; return; }
+        openLauncherTab(tab);
+    }
     function openNotifications()   { closeAll(); notificationsOpen = true; }
 }

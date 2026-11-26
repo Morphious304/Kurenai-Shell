@@ -107,8 +107,9 @@ Usage: kurenai-ctl <command>
   notif-takeover     stop the running notification daemon so KURENAI can own the service
   notif-restore      stop the KURENAI shell and bring the previous daemon back
 
- Launcher
-  reset-launcher     forget favourites and recents (rewrites launcher.json)
+ Launcher (tabs: Apps | Run | Prime | Walls)
+  reset-launcher     forget favourites, recents, Prime favourites and the Run command history
+  rofi-theme         read-only: is the KURENAI Rofi theme installed, is Rofi using it, and how to switch it on
 
  Undo
   rollback           stop shell, restore the old notifier, remove ALL hooks, move KURENAI files aside
@@ -276,8 +277,28 @@ cmd_notif_restore() {
 # ------------------------------------------------------------------ launcher
 cmd_reset_launcher() {
   mkdir -p "$STATE"
-  printf '{\n  "favorites": [],\n  "recent": []\n}\n' > "$STATE/launcher.json"
-  echo "launcher.json reset. Restart the shell to reload it: kurenai-ctl restart"
+  printf '{\n  "favorites": [],\n  "recent": [],\n  "primeFavorites": [],\n  "primeRecent": []\n}\n' > "$STATE/launcher.json"
+  # the Run tab's history can contain secrets typed into commands: recreate it empty and private
+  ( umask 077; printf '{\n  "commands": []\n}\n' > "$STATE/runhistory.json" )
+  chmod 600 "$STATE/runhistory.json" 2>/dev/null || true
+  echo "launcher.json and runhistory.json reset. Restart the shell to reload them: kurenai-ctl restart"
+}
+
+# Read-only. KURENAI never edits your Rofi config; it only tells you the one line to add.
+cmd_rofi_theme() {
+  local theme="$CFG/rofi/themes/kurenai.rasi" rc="$CFG/rofi/config.rasi"
+  have rofi || echo "note: rofi is not installed (pacman -S rofi); the theme is only used by the Rofi fallback."
+  if [ -f "$theme" ]; then echo "theme file:   $theme"
+  else echo "theme file:   MISSING ($theme). Re-run install.sh, or copy rofi/kurenai.rasi there."; fi
+  if [ -f "$rc" ] && grep -Eq '^[[:space:]]*@theme[[:space:]]+"?(kurenai|.*kurenai\.rasi)' "$rc"; then
+    echo "config.rasi:  already uses it ($rc)"
+  else
+    echo "config.rasi:  does not use it yet. To make it Rofi's default, add this line at the TOP of $rc:"
+    echo '                @theme "kurenai"'
+    echo "              (the KURENAI fallback bind already passes -theme kurenai, so this is only for Rofi started other ways)"
+  fi
+  echo "try it once:  rofi -show drun -theme kurenai"
+  echo "undo:         remove that one line from config.rasi (nothing else was changed)"
 }
 
 # ------------------------------------------------------------------ keybind conflicts
@@ -862,6 +883,34 @@ cmd_validate() {
   echo "Launcher fallback"
   have rofi && ok "rofi installed: $(command -v rofi)" || warn "rofi not found: the launcher fallback will not work"
   [ -f "$STATE/launcher.json" ] && ok "launcher.json present" || warn "launcher.json missing (the installer creates it)"
+  if [ -f "$CFG/rofi/themes/kurenai.rasi" ]; then ok "Rofi theme installed ($CFG/rofi/themes/kurenai.rasi); kurenai-ctl rofi-theme shows how to use it"
+  else warn "Rofi theme missing (the installer copies rofi/kurenai.rasi to $CFG/rofi/themes/)"; fi
+
+  echo "Launcher tabs"
+  for f in LauncherList LauncherRun LauncherWalls Runner Walls; do
+    [ -f "$QS_DIR/kurenai/$f.qml" ] || warn "$f.qml missing from $QS_DIR/kurenai (re-run install.sh)"
+  done
+  local rh="$STATE/runhistory.json" rhm
+  if [ -f "$rh" ]; then
+    rhm="$(stat -c %a "$rh" 2>/dev/null || true)"
+    [ "$rhm" = "600" ] && ok "Run history is private (mode 600)" || warn "Run history mode is $rhm (should be 600): chmod 600 $rh"
+  else ok "no Run history yet (nothing recorded)"; fi
+  if have prime-run; then ok "prime-run found: $(command -v prime-run) (Prime tab)"
+  else warn "prime-run not found: the Prime tab will say so. On Arch it is in the nvidia-prime package"; fi
+  if have awww; then
+    ok "awww found (Walls tab)"
+    awww query >/dev/null 2>&1 && ok "awww-daemon answers" || warn "awww-daemon is not answering: wallpapers cannot be set until it runs"
+  else warn "awww not found: the Walls tab will show thumbnails but cannot set a wallpaper"; fi
+  local wd wdirs
+  wdirs="$(grep -E 'wallpaperDirs:' "$QS_DIR/kurenai/Config.qml" 2>/dev/null | grep -oE '"[^"]+"' | tr -d '"')"
+  [ -n "$wdirs" ] || wdirs='~/Pictures/Wallpapers'
+  while IFS= read -r wd; do
+    [ -n "$wd" ] || continue
+    case "$wd" in "~") wd="$HOME" ;; "~/"*) wd="$HOME/${wd#\~/}" ;; esac
+    if [ -d "$wd" ]; then
+      ok "wallpaper folder $wd: $(find -L "$wd" -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.tga' -o -iname '*.tiff' \) 2>/dev/null | wc -l) images (subfolders included)"
+    else warn "wallpaper folder $wd does not exist (Config.wallpaperDirs)"; fi
+  done <<< "$wdirs"
   have notify-send && ok "notify-send available (for testing)" || warn "notify-send missing (pacman -S libnotify) for testing notifications"
 
   echo "Fonts"
@@ -919,6 +968,7 @@ case "${1:-}" in
   notif-takeover)    cmd_notif_takeover ;;
   notif-restore)     cmd_notif_restore ;;
   reset-launcher)    cmd_reset_launcher ;;
+  rofi-theme)        cmd_rofi_theme ;;
   rollback)          cmd_rollback ;;
   restore)           cmd_restore ;;
   *)                 usage; [ -z "${1:-}" ] || exit 1 ;;

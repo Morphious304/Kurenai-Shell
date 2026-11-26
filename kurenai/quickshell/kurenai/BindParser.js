@@ -1385,6 +1385,12 @@ var IPC_LABELS = {
     "lock lock": "Lock the screen"
 };
 
+// `launcher openTab <tab>` / `launcher toggleTab <tab>` carry the tab as a third word
+var LAUNCHER_TAB_LABELS = {
+    "apps": "Application launcher", "run": "Run a command (launcher)",
+    "prime": "Apps on the NVIDIA GPU (launcher)", "walls": "Wallpaper switcher"
+};
+
 function _splitChain(cmd) {
     var parts = cmd.split(/\s*(?:&&|\|\||;)\s*/), out = [];
     for (var i = 0; i < parts.length; i++) if (parts[i] !== "") out.push(parts[i]);
@@ -1407,12 +1413,14 @@ function execInfo(cmd) {
     if (typeof cmd !== "string") return { label: "Run a command", category: "Apps & commands" };
     var low = cmd.toLowerCase();
 
-    var ipc = /\bipc\s+call\s+(\w+)\s+(\w+)/.exec(cmd);
+    var ipc = /\bipc\s+call\s+(\w+)\s+(\w+)(?:\s+(\w+))?/.exec(cmd);
     if (ipc) {
         var key = ipc[1].toLowerCase() + " " + ipc[2].toLowerCase();
         var isShell = /kurenai/.test(cmd);
+        var tabLabel = (key === "launcher toggletab" || key === "launcher opentab") && ipc[3]
+            ? LAUNCHER_TAB_LABELS[ipc[3].toLowerCase()] : "";
         return {
-            label: IPC_LABELS[key] || ((isShell ? "KURENAI: " : "Shell: ") + ipc[1] + " " + ipc[2]),
+            label: tabLabel || IPC_LABELS[key] || ((isShell ? "KURENAI: " : "Shell: ") + ipc[1] + " " + ipc[2]),
             category: isShell ? "KURENAI shell" : "Apps & commands"
         };
     }
@@ -1457,6 +1465,8 @@ function execInfo(cmd) {
         if (tgt && other === tgt[1].replace(/^.*\//, "")) return { label: "Toggle " + other, category: "Apps & commands" };
         return { label: "Stop " + (tgt ? tgt[1] : "a program"), category: "Apps & commands" };
     }
+    // the KURENAI fallback is `sh -c 'if ...; then exec rofi -show drun ...'`: name it by what it starts
+    if (/\brofi\s+-show\b/.test(low)) return { label: "Run rofi", category: "Apps & commands" };
     if (prog === "hyprctl") return { label: "Hyprland command", category: "Windows" };
     if (prog === "") return { label: "Run a command", category: "Apps & commands" };
     return { label: "Run " + prog, category: "Apps & commands" };

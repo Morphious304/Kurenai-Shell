@@ -3,15 +3,24 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-// Application index for the launcher.
+// Application index for the launcher (Apps tab and Prime tab).
 //   * applications come from Quickshell's DesktopEntries (real .desktop files on this system)
 //   * favourites and recents are stored locally in  $XDG_DATA_HOME/kurenai/launcher.json
 //     (a small JSON file of desktop-entry ids; delete it to reset: `kurenai-ctl reset-launcher`)
+//   * the Prime tab has its own favourites/recents, so your NVIDIA apps stay separate
 Singleton {
     id: root
 
     property var favorites: []     // desktop entry ids, in the order you added them
     property var recent: []        // desktop entry ids, most recent first
+    property var primeFavorites: []
+    property var primeRecent: []
+    property bool primeChecked: false     // the check has finished at least once
+    property bool primeAvailable: false   // is `Config.primeCommand` on PATH? (checked each time the Prime tab opens)
+
+    // mode is "apps" (default) or "prime"
+    function favList(mode)    { return mode === "prime" ? primeFavorites : favorites; }
+    function recentList(mode) { return mode === "prime" ? primeRecent : recent; }
 
     readonly property string dataDir:
         (Quickshell.env("XDG_DATA_HOME") || (Quickshell.env("HOME") + "/.local/share")) + "/kurenai"
@@ -32,14 +41,16 @@ Singleton {
         return null;
     }
 
-    function isFavorite(id) { return favorites.indexOf(id) >= 0; }
+    function isFavorite(id, mode) { return favList(mode).indexOf(id) >= 0; }
 
     // ---- search ----------------------------------------------------------------
     // Empty query: favourites, then recents, then everything else A-Z.
     // Otherwise a simple weighted match over name, generic name, keywords, categories, comment.
-    function search(query) {
+    function search(query, mode) {
         const q = (query || "").trim().toLowerCase();
         const limit = Config.launcherMaxResults;
+        const favorites = favList(mode);
+        const recent = recentList(mode);
 
         if (q === "") {
             const seen = {};
@@ -79,7 +90,7 @@ Singleton {
             }
             if (!matchedAll) continue;
 
-            if (isFavorite(e.id)) total += 15;
+            if (favorites.indexOf(e.id) >= 0) total += 15;
             const r = recent.indexOf(e.id);
             if (r >= 0) total += Math.max(0, 12 - r);
             scored.push({ e: e, s: total });
@@ -100,15 +111,60 @@ Singleton {
         noteLaunch(entry.id);
     }
 
-    function noteLaunch(id) {
-        const r = recent.filter(x => x !== id);
+    // ---- Prime: run through `prime-run` (NVIDIA render offload) ---------------------------------
+    // The desktop entry's command, with the %-placeholders (%u %U %f %F ...) removed: a launcher
+    // started without a file or URL has nothing to put there. "%%" is a literal percent sign.
+    function cleanCommand(entry) {
+        const out = [];
+        const raw = Array.from(entry.command || []);
+        for (let i = 0; i < raw.length; i++) {
+            const t = String(raw[i]).replace(/%%/g, "\u0001").replace(/%[fFuUdDnNickvm]/g, "").replace(/\u0001/g, "%");
+            if (t !== "") out.push(t);
+        }
+        return out;
+    }
+
+    function isFlatpak(entry) {
+        const c = Array.from(entry.command || []);
+        return c.length > 0 && String(c[0]).split("/").pop() === "flatpak";
+    }
+
+    // Is the prime wrapper installed? (read-only: `command -v`)
+    function checkPrime() {
+        if (!primeProbe.running) primeProbe.running = true;
+    }
+    Process {
+        id: primeProbe
+        command: ["sh", "-c", 'command -v "$1" >/dev/null 2>&1', "sh", Config.primeCommand]
+        onExited: (code, status) => { root.primeAvailable = (code === 0); root.primeChecked = true; }
+    }
+
+    function launchPrime(entry) {
+        if (!entry || !primeAvailable) return;
+        let cmd = [Config.primeCommand].concat(cleanCommand(entry));
+        if (entry.runInTerminal) cmd = [Config.terminal].concat(cmd);
+        const wd = entry.workingDirectory || "";
+        if (wd !== "") {
+            // run from the entry's Path= directory without relying on any exec option
+            cmd = ["sh", "-c", 'cd "$1" 2>/dev/null; shift; exec "$@"', "sh", wd].concat(cmd);
+        }
+        Quickshell.execDetached(cmd);
+        noteLaunch(entry.id, "prime");
+    }
+
+    function noteLaunch(id, mode) {
+        const r = recentList(mode).filter(x => x !== id);
         r.unshift(id);
-        recent = r.slice(0, Config.launcherMaxRecent);
+        if (mode === "prime") primeRecent = r.slice(0, Config.launcherMaxRecent);
+        else recent = r.slice(0, Config.launcherMaxRecent);
         save();
     }
 
-    function toggleFavorite(id) {
-        favorites = isFavorite(id) ? favorites.filter(x => x !== id) : favorites.concat([id]);
+    function toggleFavorite(id, mode) {
+        const cur = favList(mode);
+        const next = cur.indexOf(id) >= 0 ? cur.filter(x => x !== id) : cur.concat([id]);
+        if (mode === "prime") primeFavorites = next;
+        else favorites = next;
         save();
     }
 
@@ -124,6 +180,8 @@ Singleton {
             const d = JSON.parse(file.text());
             if (Array.isArray(d.favorites)) favorites = d.favorites.filter(x => typeof x === "string");
             if (Array.isArray(d.recent)) recent = d.recent.filter(x => typeof x === "string").slice(0, Config.launcherMaxRecent);
+            if (Array.isArray(d.primeFavorites)) primeFavorites = d.primeFavorites.filter(x => typeof x === "string");
+            if (Array.isArray(d.primeRecent)) primeRecent = d.primeRecent.filter(x => typeof x === "string").slice(0, Config.launcherMaxRecent);
         } catch (e) {
             // missing or unreadable file: start empty (the installer creates it)
         }
@@ -131,7 +189,7 @@ Singleton {
 
     function save() {
         try {
-            file.setText(JSON.stringify({ favorites: favorites, recent: recent }, null, 2) + "\n");
+            file.setText(JSON.stringify({ favorites: favorites, recent: recent, primeFavorites: primeFavorites, primeRecent: primeRecent }, null, 2) + "\n");
         } catch (e) {
             console.warn("[kurenai] could not save launcher.json:", e);
         }

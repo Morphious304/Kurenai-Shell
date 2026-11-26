@@ -4,6 +4,8 @@ singleton UiState 1.0 UiState.qml
 singleton Compositor 1.0 Compositor.qml
 singleton NotificationStore 1.0 NotificationStore.qml
 singleton Apps 1.0 Apps.qml
+singleton Runner 1.0 Runner.qml
+singleton Walls 1.0 Walls.qml
 singleton Audio 1.0 Audio.qml
 singleton System 1.0 System.qml
 singleton Media 1.0 Media.qml
@@ -28,6 +30,9 @@ NotificationCard 1.0 NotificationCard.qml
 NotificationPopups 1.0 NotificationPopups.qml
 NotificationCenter 1.0 NotificationCenter.qml
 Launcher 1.0 Launcher.qml
+LauncherList 1.0 LauncherList.qml
+LauncherRun 1.0 LauncherRun.qml
+LauncherWalls 1.0 LauncherWalls.qml
 Ipc 1.0 Ipc.qml
 PanelFrame 1.0 PanelFrame.qml
 Btn 1.0 Btn.qml

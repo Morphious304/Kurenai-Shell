@@ -14,11 +14,18 @@
 -- verify once with the shell stopped: qs -c kurenai ipc call launcher toggle; echo $?)
 
 local QS   = "qs -c kurenai ipc call "
-local ROFI = "rofi -show drun"      -- change to your usual Rofi invocation
+-- The Rofi fallback uses the KURENAI Rofi theme when it is installed (kurenai-ctl rofi-theme), plain Rofi otherwise.
+-- (An if/else, not `||`: cancelling Rofi exits non-zero and must not open a second one.)
+-- Change it to your usual Rofi invocation if you like.
+local ROFI = [[sh -c 'if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/rofi/themes/kurenai.rasi" ]; then exec rofi -show drun -show-icons -theme kurenai; else exec rofi -show drun; fi']]
 
 local binds = {
   { "SUPER + SPACE",         QS .. "launcher toggle || " .. ROFI },
   { "SUPER + SHIFT + SPACE", "command -v rofi >/dev/null && " .. ROFI },
+  -- launcher tabs: the same key again closes it; from another tab it just switches. (Tab / Ctrl+1..4 also switch inside the launcher.)
+  { "SUPER + SHIFT + R",     QS .. "launcher toggleTab run" },          -- Run: type a command
+  { "SUPER + SHIFT + P",     QS .. "launcher toggleTab prime" },        -- Prime: start an app on the NVIDIA GPU
+  { "SUPER + SHIFT + W",     QS .. "launcher toggleTab walls" },        -- Walls: wallpaper switcher
   { "SUPER + N",             QS .. "notifications toggle" },
   { "SUPER + SHIFT + N",     QS .. "notifications dnd" },
   { "SUPER + A",             QS .. "quicksettings toggle" },

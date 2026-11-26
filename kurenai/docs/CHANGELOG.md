@@ -4,7 +4,17 @@
 
 Newest first. Only user-visible changes and fixes.
 
-## Final (this package)
+## Launcher tabs + Rofi theme (this package)
+- The launcher has four tabs: **Apps** (as before), **Run** (type a command), **Prime** (apps through `prime-run`) and **Walls** (wallpaper switcher with lazy thumbnails, `awww img -t random`).
+  `Tab` / `Ctrl+1..4` switch; `SUPER + SHIFT + R / P / W` open on a tab; IPC `launcher openTab|toggleTab <tab>`.
+- New Rofi theme `rofi/kurenai.rasi`; the Rofi fallback uses it when installed. `kurenai-ctl rofi-theme` explains how to make it the default (it never edits your Rofi config).
+- `kurenai-ctl validate` checks `prime-run`, `awww`, the wallpaper folder, the Rofi theme and the Run-history permissions; `reset-launcher` also clears Run history.
+- `install.sh` updates `kurenai-binds.lua` automatically only if it is byte-for-byte the previous shipped file; otherwise it writes `kurenai-binds.lua.new`.
+- The shortcuts page names the new keys.
+- Changed files: `Launcher.qml` (now the tab host), `Apps.qml`, `Config.qml`, `UiState.qml`, `Ipc.qml`, `qmldir`, `BindParser.js`, `kurenai-binds.lua`, `install.sh`, `kurenai-ctl`.
+  New: `LauncherList.qml`, `LauncherRun.qml`, `LauncherWalls.qml`, `Runner.qml`, `Walls.qml`, `rofi/kurenai.rasi`, `docs/LAUNCHER.md`.
+
+## Documentation (previous package)
 - Documentation consolidated: one README plus the pages in `docs/`. No code changes in this step.
 
 ## Meter fix
