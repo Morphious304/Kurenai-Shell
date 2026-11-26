@@ -1,0 +1,70 @@
+# Troubleshooting
+
+[Back to the README](../README.md)
+
+First, always: `kurenai-ctl validate`. It is read-only and reports versions, services, files, how many shells are running and who
+owns the notification service. Logs: `kurenai-ctl logs` (the running shell), `kurenai-ctl debug` (foreground run, `Ctrl+C` quits),
+`qs log -c kurenai-lock` (the locker).
+
+## The shell
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Two bars, or `Could not register notification server at org.freedesktop.Notifications` | a second shell was started by hand (`qs -c kurenai`) | run ONE shell: `kurenai-ctl start` / `restart` / `stop`. `kurenai-ctl debug` stops the running one first |
+| `qs list` shows nothing for KURENAI | without `-c`, `qs list` only looks at the default config | `qs list --all` |
+| Nothing appears at all after `kurenai-ctl start` | a QML error | `kurenai-ctl debug` shows it. Send me the first error line |
+| `qt.qpa.wayland.textinput ... Trying to disable ... but 0x0 is focused` | a Qt-internal warning when a panel hides (the launcher's search field lives in one) | ignore unless the launcher stops accepting typing |
+| Colours or fonts look wrong after editing `Theme.qml` | a typo, or a font name that is not installed | `fc-list \| grep -i NAME`; `kurenai-ctl debug` shows QML errors |
+| The lock screen does not match a changed theme | the lock config holds its own copy | `kurenai-ctl lock-sync-theme`, then `kurenai-ctl lock-stop && kurenai-ctl lock-start` |
+
+## Notifications
+
+| Symptom | Fix |
+|---|---|
+| Popups never appear | `kurenai-ctl notif-status` shows who owns the service. If mako, dunst or swaync is running: `kurenai-ctl notif-takeover`, then `kurenai-ctl start` |
+| The old daemon comes back after a reboot | it is still started by your session: comment out its autostart (`notif-status` shows where) |
+| You want the old daemon back | `kurenai-ctl notif-restore` |
+| Testing | `notify-send 'KURENAI' 'hello'` (package `libnotify`) |
+
+## Keybinds
+
+| Symptom | Fix |
+|---|---|
+| A KURENAI key does nothing | `kurenai-ctl binds-check`; then open the shortcuts page (`qs -c kurenai ipc call shortcuts toggle`) and search the key |
+| `binds-check` reports a chord bound twice | a real clash with one of your own binds: change one of them. The shortcuts page marks these `duplicate` |
+| `kurenai-binds.lua.new` exists next to your binds file | a newer shipped file is waiting: `diff ~/.config/hypr/kurenai-binds.lua{,.new}` and merge by hand |
+| The launcher key does nothing when the shell is stopped | it should open Rofi instead. Test once with the shell stopped: `qs -c kurenai ipc call launcher toggle; echo $?` (the fallback assumes a non-zero exit) |
+| Hyprland reports config errors after `enable` | `hyprctl configerrors`; then `kurenai-ctl disable` (or `disable-binds`) puts it back |
+
+## Panels
+
+| Symptom | Fix |
+|---|---|
+| Brightness slider and your keys disagree about "50 %" | `Config.brightnessExponent` / `brightnessMin` must equal the `-eN -nM` your brightness keys use (`kurenai-ctl validate` checks this) |
+| Brightness OSD never shows | with `udevadm` present it is automatic; otherwise `kurenai-ctl media-binds` prints the one-line change |
+| No "Lock" entry in the power menu | start the KURENAI lock (`kurenai-ctl lock-start`) or install a fallback lock tool (see the README), then `kurenai-ctl restart` |
+| Volume row dimmed | PipeWire is not reachable from the shell: check `wpctl status` |
+| Album art is a placeholder | the player only offers an `https://` image. Art is never downloaded |
+| Clipboard panel says it needs setup | `sudo pacman -S cliphist wl-clipboard xdg-utils`, then `kurenai-ctl restart` |
+| Shortcuts page is missing rows | `kurenai-ctl shortcuts` lists every file read and each warning with `file:line` |
+
+## The lock screen
+
+The short version: if the screen is stuck, press `Ctrl+Alt+F3`, log in, run `kurenai-ctl lock-recover`, switch back with
+`Ctrl+Alt+F1` or `F2`, and unlock. The long version, including how to find out which lock path misbehaves, is in
+[LOCK-SCREEN.md](LOCK-SCREEN.md).
+
+| Command | Use |
+|---|---|
+| `kurenai-ctl lock-status` | is the locker running, is the screen locked (also reports a stale state) |
+| `kurenai-ctl lock-reset` | you are on your desktop but the locker says "locked": clean restart |
+| `kurenai-ctl lock-recover` | from a TTY: restart the locker if the screen is stuck |
+| `kurenai-ctl lock-diagnose` | one compact report to send me (no passwords) |
+| `kurenai-ctl lock-preview` | the lock screen in a normal window with the real password check; locks nothing |
+
+Last resort, ends your session and loses unsaved work: `pkill -x Hyprland`.
+
+## Still stuck
+
+Send me: the output of `kurenai-ctl validate`, the first error line from `kurenai-ctl debug`, your Hyprland and Quickshell versions,
+and what you expected to happen. I can only reason from what you paste; I cannot see your machine.
