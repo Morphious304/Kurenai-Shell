@@ -158,8 +158,8 @@ cp -a ~/.config/hypr ~/.config/hypr.bak
 **3. Get KURENAI**
 
 ```bash
-git clone https://github.com/Morphious304/kurenai.git
-cd kurenai
+git clone https://github.com/Morphious304/Kurenai-Shell.git
+cd Kurenai-Shell/kurenai
 ```
 
 **4. Copy the files into place**

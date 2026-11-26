@@ -1,0 +1,12 @@
+singleton Theme 1.0 Theme.qml
+singleton UiState 1.0 UiState.qml
+singleton Compositor 1.0 Compositor.qml
+BarItem 1.0 BarItem.qml
+Divider 1.0 Divider.qml
+Emblem 1.0 Emblem.qml
+Workspaces 1.0 Workspaces.qml
+WindowTitle 1.0 WindowTitle.qml
+Clock 1.0 Clock.qml
+Tray 1.0 Tray.qml
+Status 1.0 Status.qml
+Bar 1.0 Bar.qml
