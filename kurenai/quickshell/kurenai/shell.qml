@@ -1,7 +1,8 @@
 import Quickshell
 
 // KURENAI shell entry point. Run with:  qs -c kurenai   (managed start: kurenai-ctl start)
-// Phase 4a: bar, notification popups/centre, launcher, quick settings, media, calendar, power menu, OSD, IPC.
+// Phase 4b + 4a.6: bar, notifications, launcher, quick settings, media, calendar, power menu, OSD,
+// clipboard history, system monitor, keyboard shortcuts page, IPC.
 ShellRoot {
     // one bar per screen
     Variants {
@@ -17,7 +18,10 @@ ShellRoot {
     MediaPanel {}
     CalendarPanel {}
     PowerMenu {}
+    ShortcutsPanel {}
     OsdWindow {}
+    ClipboardPanel {}
+    SysMonPanel {}
 
     Ipc {}
 }

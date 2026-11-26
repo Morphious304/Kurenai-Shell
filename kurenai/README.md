@@ -1,7 +1,8 @@
-# KURENAI, phase 4a.5 (lock screen: unlock-state fix)
+# KURENAI, phase 4b + 4a.6 (clipboard history, system monitor, keyboard shortcuts page)
 
 Hyprland (Lua config, 0.55+) theme + Quickshell shell: top bar, notification popups and centre,
-docked application launcher, quick settings, media panel, calendar, on-screen display, power menu, IPC.
+docked application launcher, quick settings, media panel, calendar, on-screen display, power menu,
+keyboard shortcuts page (live from your Lua config), lock screen, IPC.
 Phase 4b (next): clipboard history, optional system monitor.
 
 ```
@@ -22,6 +23,8 @@ quickshell/kurenai/              managed start: kurenai-ctl start   (foreground 
   Media.qml MediaPanel.qml       the one MPRIS state / the media popover (bar item opens it)
   CalendarPanel.qml              month calendar, opened by clicking the clock (offline)
   Power.qml PowerMenu.qml        lock / suspend / log out / reboot / shut down, confirmation for the destructive ones
+  Keybinds.qml BindParser.js     the shortcut list (watches + reads hyprland.lua and every file it requires; asks Hyprland what is active)
+  ShortcutsPanel.qml             the shortcuts page: search, grouped, source file:line, live status
   OsdState.qml OsdWindow.qml     what the on-screen display shows / the single click-through pill
   QuickSettings.qml              the panel: battery + power profile, sound, brightness, Wi-Fi, Bluetooth, toggles, shortcuts
   Btn.qml KToggle.qml KSlider.qml QsSection.qml ListBox.qml LevelRow.qml   shared, keyboard-accessible controls
@@ -38,6 +41,7 @@ qs -c kurenai ipc call quicksettings toggle|open|close
 qs -c kurenai ipc call media toggle|playpause|next|previous
 qs -c kurenai ipc call calendar toggle|close
 qs -c kurenai ipc call powermenu toggle|close
+qs -c kurenai ipc call shortcuts toggle|open|close|rescan|status
 qs -c kurenai ipc call osd brightness
 qs -c kurenai ipc call shell closeAll
 ```
@@ -50,6 +54,36 @@ qs -c kurenai ipc call shell closeAll
 ## Local data
 `~/.local/share/kurenai/launcher.json` holds favourite/recent desktop-entry ids only. Reset: `kurenai-ctl reset-launcher`.
 Notification history lives in memory only (it is cleared when Quickshell stops).
+
+## Keyboard shortcuts page (`SUPER + SLASH`, or `qs -c kurenai ipc call shortcuts toggle`)
+
+A cheat sheet that is **read from your real config, so it cannot go stale**. Type to filter (every word must match: `super shift`,
+`volume`, `kurenai`, a file name); Up/Down/PageUp/PageDown scroll; Esc closes.
+
+**Where the list comes from**
+1. `~/.config/hypr/hyprland.lua` and **every file it loads** (`require("keybinds")`, `pcall(require, ...)`, dotted names, `./dir/*`
+   wildcards, `dofile`). Adding or removing a `require` line adds or drops that file by itself.
+2. `hyprctl binds` (read-only) is the cross-check: each row is marked **not active** if your files define it but Hyprland does not have it
+   (typo, unreloaded edit, `hl.unbind`), and binds that only exist while Hyprland runs appear as **Hyprland only**.
+
+**How it reads Lua:** `BindParser.js` is a small interpreter for the subset keybind files use: variables (`mainMod`), string joins
+(`mainMod .. " + Q"`), `for` loops (the workspace 1-10 binds), tables of binds, helper functions, `hl.bind`, `hl.unbind`,
+`hl.define_submap`, bind functions (it lists what they dispatch). It **never runs a command and never writes anything**; it only reads files.
+A `description = "..."` flag on a bind becomes its label, so the nicest way to improve a row is to add one.
+
+**Staying current:** the files are watched; while the page is open they are also re-read every 2 s (covers editors that save by replacing
+the file), and Hyprland's `configreloaded` event and opening the page refresh the check. Nothing is re-analysed unless a file's text changed.
+
+**Row tags:** `not active` (amber) = in your files, not in Hyprland. `duplicate` (rose) = the same chord is bound twice (a real clash).
+`Hyprland only` (teal) = active but built at run time. Footer `N files` opens the list of files read and anything it could not follow.
+
+**If something looks wrong:** `kurenai-ctl shortcuts` (same as `qs -c kurenai ipc call shortcuts status`) prints every file read, how many
+binds each gave, and each warning with `file:line`. Not at `~/.config/hypr/hyprland.lua`? Set `hyprMainFile` in `Config.qml`.
+Limits: anything decided only while running (an `if` on window state) is skipped; Lua string patterns (`string.match`) are not evaluated.
+Those binds still show up through the Hyprland cross-check.
+
+**Add the key:** `kurenai-binds.lua` gets one new line, which the installer never forces onto your edited file:
+`{ "SUPER + SLASH",         QS .. "shortcuts toggle" },` (after the `SUPER + L` line), then `hyprctl reload`.
 
 ## Quick settings: what it needs
 | Control | Uses | If missing |
@@ -177,3 +211,43 @@ record of the lock, cleans up itself at unlock, and every lock starts from a cle
 - The supervisor now refuses to start without `WAYLAND_DISPLAY` (a TTY) and exits when its Wayland session is gone, so a leftover
   supervisor can no longer crash-loop or block the next session's supervisor.
 - hypridle was never the problem: `hypridle -v` showed it receiving the logind lock, running `lock_cmd`, and Hyprland confirming the lock.
+
+## Clipboard history (`SUPER+V`)
+
+Text **and images**, searchable, with a **History** tab (auto-deleted after 30 days) and a **Pinned** tab (kept until you remove them).
+Engine: `cliphist` + `wl-clipboard`, driven by the helper `~/.local/bin/kurenai-clip`.
+
+| Key | Action |
+|---|---|
+| `Enter` / click | copy the entry back onto the clipboard, then paste in your app with the usual **Ctrl+V** |
+| `Ctrl+P` | pin / unpin | 
+| `Shift+Delete` (or `Delete` on an empty search) | delete the entry |
+| `Tab` | switch History / Pinned |
+| switch in the header | pause / resume recording |
+
+**Why there are no Ctrl+X / Ctrl+C / Ctrl+V binds:** those keys already work inside every application, and a compositor-level bind
+would *swallow* them (copy and paste would stop working, and Ctrl+C would no longer interrupt a program in the terminal). Whatever
+those keys copy is recorded automatically. The only new clipboard shortcut is `SUPER+V`.
+
+### Privacy: exactly what happens to your clipboard
+- Everything stays on this machine; there is no network code. Clipboard contents are **never written to a log** (the panel and the helper
+  contain no logging of entries; checked).
+- History lives in cliphist's database `~/.cache/cliphist/db` (kept private: mode 600) and **persists across reboots** until it expires,
+  you delete it, or you clear it. Pins are copies kept in `~/.local/share/kurenai/clipboard/pins/` (mode 700).
+- **Auto-clear:** history older than `Config.clipboardRetentionDays` (30) is deleted at start, every 6 hours and whenever the panel opens.
+  cliphist 0.7.0 does not store timestamps, so the helper records the time of each copy itself (`times.tsv`). An entry whose time is
+  unknown starts its 30 days when first noticed. **Pinned items are never auto-deleted.**
+- **Pause** stops recording completely. `Config.clipboardEnabled = false` means nothing is ever recorded.
+- **Password managers:** if an app clears the clipboard (most managers do after a timeout), cliphist removes that last entry. I could **not**
+  confirm that cliphist ignores "sensitive" hints, so a copied password can be recorded until the manager clears it: pause recording while
+  you work with secrets, or delete the entry (`Shift+Delete`).
+- Decoded image previews live only in `$XDG_RUNTIME_DIR` (memory, private) and are removed when the panel closes.
+- `kurenai-ctl clip-wipe` (asks first) or "Clear history..." in the panel (two clicks) deletes the history; pins are kept.
+- Items bigger than `Config.clipboardMaxStoreMB` (10 MB) are not recorded (cliphist's own default is 5 MB, too small for screenshots).
+
+## System monitor (`SUPER+I`, or the chart button in quick settings)
+CPU, memory (+swap), CPU temperature (if a sensor exists), battery, and storage (`/`, `/home`, `/boot`, one line per real filesystem).
+It reads data **only while the panel is open** (every `Config.sysmonInterval` ms, via the read-only helper `kurenai-sysmon`); closed = zero cost.
+
+## kurenai-ctl additions
+`clip-status`, `clip-wipe`, `clip <cmd>`; `validate` has a "Clipboard history and system monitor" section.

@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# kurenai-clip: the clipboard-history engine behind the KURENAI clipboard panel (a thin layer over cliphist).
+#
+# Why a script: the panel (QML) stays a thin view, and the parts that matter for your privacy (what is stored,
+# what is deleted, when) live here where they can be read and tested. Nothing here talks to the network.
+#
+#   store            stdin -> cliphist store, and remember WHEN (cliphist 0.7.0 has no timestamps)
+#   list             history as TSV: id  kind(text|image|binary)  mime  epoch  preview
+#   pins / pin ID / unpin N / unpin-all / copy-pin N
+#   copy ID          put a history entry back on the clipboard
+#   delete ID / wipe / purge DAYS
+#   thumb ID / thumbs-clean
+#   pause / resume / paused / status
+#
+# Data (all private, mode 700/600):  $XDG_DATA_HOME/kurenai/clipboard/   (pins, times.tsv, paused flag)
+# cliphist's own history:            $XDG_CACHE_HOME/cliphist/db   (default location)
+set -u
+umask 077
+
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/kurenai/clipboard"
+RUN="${XDG_RUNTIME_DIR:-/tmp}/kurenai-clip"
+PINS="$DATA/pins"
+INDEX="$PINS/index.tsv"
+TIMES="$DATA/times.tsv"
+PAUSED="$DATA/paused"
+CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/cliphist"
+
+# cliphist limits (it reads these environment variables): items kept, and the biggest single item stored
+export CLIPHIST_MAX_ITEMS="${KURENAI_CLIP_MAX_ITEMS:-500}"
+export CLIPHIST_MAX_STORE_SIZE="${KURENAI_CLIP_MAX_STORE:-10MB}"
+
+mkdir -p "$DATA" "$PINS" "$RUN" "$CACHE" 2>/dev/null
+chmod 700 "$DATA" "$PINS" "$RUN" "$CACHE" 2>/dev/null
+touch "$TIMES" "$INDEX" 2>/dev/null
+
+die()      { printf 'kurenai-clip: %s\n' "$*" >&2; exit 2; }
+valid_id() { case "${1:-}" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }   # digits only: ids are never trusted
+need_id()  { valid_id "${1:-}" || die "expected a numeric id"; }
+newest_id() { cliphist list 2>/dev/null | head -n1 | cut -f1; }
+tidy_db()  { [ -f "$CACHE/db" ] && chmod 600 "$CACHE/db" 2>/dev/null; return 0; }
+
+# one history line (id<TAB>preview) for an id
+history_line() { cliphist list 2>/dev/null | awk -F'\t' -v id="$1" '$1 == id { print; exit }'; }
+
+# "[[ binary data 1.2 MiB png 800x600 ]]" -> image/png
+mime_of_preview() {
+  case "$1" in
+    *"binary data"*" png "*)  echo image/png ;;
+    *"binary data"*" jpg "*|*"binary data"*" jpeg "*) echo image/jpeg ;;
+    *"binary data"*" bmp "*)  echo image/bmp ;;
+    *"binary data"*" tiff "*) echo image/tiff ;;
+    *) echo "" ;;
+  esac
+}
+
+cmd="${1:-}"; [ $# -gt 0 ] && shift
+
+case "$cmd" in
+
+store)
+  # Called by `wl-paste --watch`. While paused, read and drop the data: nothing is recorded.
+  if [ -e "$PAUSED" ]; then cat >/dev/null; exit 0; fi
+  before="$(newest_id)"
+  cliphist store; rc=$?
+  after="$(newest_id)"
+  if [ -n "$after" ] && [ "$after" != "$before" ]; then printf '%s\t%s\n' "$after" "$(date +%s)" >> "$TIMES"; fi
+  tidy_db
+  exit $rc ;;
+
+list)
+  cliphist list 2>/dev/null | awk -F'\t' -v OFS='\t' -v tf="$TIMES" '
+    BEGIN { while ((getline l < tf) > 0) { n = split(l, a, "\t"); if (n >= 2) t[a[1]] = a[2] } }
+    {
+      id = $1; pv = $2
+      for (i = 3; i <= NF; i++) pv = pv " " $i
+      gsub(/[\001-\037]/, " ", pv)
+      kind = "text"; mime = ""
+      if (pv ~ /^\[\[ binary data /) {
+        kind = "binary"
+        if (pv ~ / png /)  { kind = "image"; mime = "image/png" }
+        else if (pv ~ / jpe?g /) { kind = "image"; mime = "image/jpeg" }
+        else if (pv ~ / bmp /)   { kind = "image"; mime = "image/bmp" }
+        else if (pv ~ / tiff /)  { kind = "image"; mime = "image/tiff" }
+      }
+      print id, kind, mime, ((id in t) ? t[id] : 0), pv
+    }' ;;
+
+copy)
+  need_id "${1:-}"
+  line="$(history_line "$1")"; [ -n "$line" ] || die "no such entry"
+  mime="$(mime_of_preview "$(printf '%s' "$line" | cut -f2-)")"
+  if [ -n "$mime" ]; then cliphist decode "$1" | wl-copy --type "$mime"; else cliphist decode "$1" | wl-copy; fi ;;
+
+delete)
+  need_id "${1:-}"
+  printf '%s\t\n' "$1" | cliphist delete
+  awk -F'\t' -v id="$1" '$1 != id' "$TIMES" > "$TIMES.tmp" && mv -f "$TIMES.tmp" "$TIMES"
+  tidy_db ;;
+
+wipe)
+  cliphist wipe
+  : > "$TIMES"
+  tidy_db ;;
+
+purge)
+  days="${1:-30}"
+  case "$days" in ''|*[!0-9]*) die "purge needs a whole number of days" ;; esac
+  [ "$days" -ge 1 ] && [ "$days" -le 3650 ] || die "days out of range"
+  now="$(date +%s)"; cutoff=$(( now - days * 86400 ))
+  ids="$(cliphist list 2>/dev/null | cut -f1)"
+  [ -n "$ids" ] || { : > "$TIMES"; echo 0; exit 0; }
+  # entries with no recorded time (stored before this tool, or by another watcher): their clock starts now
+  for id in $ids; do grep -q "^${id}	" "$TIMES" || printf '%s\t%s\n' "$id" "$now" >> "$TIMES"; done
+  expired="$(awk -F'\t' -v c="$cutoff" '$2 < c { print $1 }' "$TIMES" | sort -u)"
+  removed=0
+  if [ -n "$expired" ]; then
+    # only ids that still exist, one "id<TAB>" line each (cliphist delete reads many lines)
+    present="$(printf '%s\n' "$ids")"
+    todel="$(printf '%s\n' "$expired" | grep -Fx -f <(printf '%s\n' "$present") || true)"
+    if [ -n "$todel" ]; then
+      removed="$(printf '%s\n' "$todel" | grep -c .)"
+      printf '%s\n' "$todel" | awk '{ print $1 "\t" }' | cliphist delete
+    fi
+  fi
+  # forget times of entries that are gone (expired, deleted, or cleared by an app)
+  cliphist list 2>/dev/null | cut -f1 | awk -F'\t' 'NR==FNR { keep[$1] = 1; next } ($1 in keep)' - "$TIMES" > "$TIMES.tmp" && mv -f "$TIMES.tmp" "$TIMES"
+  tidy_db
+  echo "$removed" ;;
+
+pins) cat "$INDEX" ;;     # n  kind  mime  pinnedAt  preview
+
+pin)
+  need_id "${1:-}"
+  line="$(history_line "$1")"; [ -n "$line" ] || die "no such entry"
+  pv="$(printf '%s' "$line" | cut -f2- | tr '\t\001-\037' ' ')"
+  mime="$(mime_of_preview "$pv")"; kind=text; [ -n "$mime" ] && kind=image
+  n=$(( $(cut -f1 "$INDEX" | sort -n | tail -n1 | grep -E '^[0-9]+$' || echo 0) + 1 ))
+  cliphist decode "$1" > "$PINS/$n.bin" || { rm -f "$PINS/$n.bin"; die "could not read the entry"; }
+  # the same content is not pinned twice
+  for f in "$PINS"/*.bin; do
+    [ "$f" = "$PINS/$n.bin" ] && continue
+    [ -e "$f" ] && cmp -s "$f" "$PINS/$n.bin" && { rm -f "$PINS/$n.bin"; echo exists; exit 0; }
+  done
+  printf '%s\t%s\t%s\t%s\t%s\n' "$n" "$kind" "$mime" "$(date +%s)" "$pv" >> "$INDEX"
+  echo "pinned $n" ;;
+
+unpin)
+  need_id "${1:-}"
+  awk -F'\t' -v n="$1" '$1 != n' "$INDEX" > "$INDEX.tmp" && mv -f "$INDEX.tmp" "$INDEX"
+  rm -f "$PINS/$1.bin" ;;
+
+unpin-all)
+  : > "$INDEX"; rm -f "$PINS"/*.bin ;;
+
+copy-pin)
+  need_id "${1:-}"
+  [ -f "$PINS/$1.bin" ] || die "no such pin"
+  mime="$(awk -F'\t' -v n="$1" '$1 == n { print $3; exit }' "$INDEX")"
+  if [ -n "$mime" ]; then wl-copy --type "$mime" < "$PINS/$1.bin"; else wl-copy < "$PINS/$1.bin"; fi ;;
+
+thumb)
+  need_id "${1:-}"
+  out="$RUN/h$1.img"
+  [ -s "$out" ] || cliphist decode "$1" > "$out" 2>/dev/null || { rm -f "$out"; die "no such entry"; }
+  printf '%s\n' "$out" ;;
+
+thumbs-clean) rm -f "$RUN"/h*.img ;;
+
+pause)   : > "$PAUSED" ;;
+resume)  rm -f "$PAUSED" ;;
+paused)  [ -e "$PAUSED" ] && echo yes || echo no ;;
+
+status)
+  echo "history entries: $(cliphist list 2>/dev/null | grep -c .)"
+  echo "pinned entries:  $(grep -c . "$INDEX" 2>/dev/null)"
+  echo "recording:       $([ -e "$PAUSED" ] && echo PAUSED || echo on)"
+  echo "oldest recorded: $(sort -t"$(printf '\t')" -k2 -n "$TIMES" 2>/dev/null | head -n1 | cut -f2 | xargs -I{} date -d @{} '+%F %T' 2>/dev/null)"
+  echo "cliphist db:     $(stat -c '%a %n' "$CACHE/db" 2>/dev/null || echo none)   (mode should be 600)" ;;
+
+*) die "unknown command '$cmd' (store list copy delete wipe purge pins pin unpin unpin-all copy-pin thumb thumbs-clean pause resume paused status)" ;;
+esac

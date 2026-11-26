@@ -116,6 +116,13 @@ Singleton {
         reboot:   "\uf021",
         bed:      "\uf236",
         chevL:    "\uf053",
-        chevR:    "\uf054"
+        chevR:    "\uf054",
+        clipboard:"\uf0ea",
+        pin:      "\uf08d",
+        image:    "\uf03e",
+        file:     "\uf15c",
+        chart:    "\uf080",
+        thermo:   "\uf2c9",
+        hdd:      "\uf0a0"
     })
 }

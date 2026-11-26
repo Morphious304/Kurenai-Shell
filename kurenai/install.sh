@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# KURENAI installer. Copies files into place after a backup. It does NOT edit hyprland.lua and does
+# KURENAI installer (phase 4a.6). Copies files into place after a backup. It does NOT edit hyprland.lua and does
 # NOT start anything; those are separate, explicit steps (see README / kurenai-ctl).
 set -euo pipefail
 
@@ -59,6 +59,9 @@ cp "$CFG/quickshell/kurenai/Theme.qml" "$CFG/quickshell/kurenai-lock/Theme.qml"
 echo "4/5 Installing kurenai-ctl and the lock supervisor to $BIN..."
 install -m 0755 "$SRC/bin/kurenai-ctl" "$BIN/kurenai-ctl"
 install -m 0755 "$SRC/bin/kurenai-lock-supervisor" "$BIN/kurenai-lock-supervisor"
+install -m 0755 "$SRC/bin/kurenai-clip" "$BIN/kurenai-clip"          # clipboard-history engine
+install -m 0755 "$SRC/bin/kurenai-sysmon" "$BIN/kurenai-sysmon"      # read-only snapshot for the system monitor
+mkdir -p "$STATE/clipboard/pins" && chmod 700 "$STATE/clipboard" "$STATE/clipboard/pins"   # pins/history metadata: private
 cp "$SRC/hypr/hypridle.kurenai.conf" "$CFG/hypr/hypridle.kurenai.conf"      # a sample only; see: kurenai-ctl lock-hypridle
 
 echo "5/5 Preparing launcher storage..."
@@ -71,12 +74,21 @@ echo "Installed. Nothing has been activated or started."
 echo "  Health check:   $BIN/kurenai-ctl validate"
 echo "  Test the shell: $BIN/kurenai-ctl debug   (foreground with live logs; stops any running shell first, Ctrl+C quits)"
 echo "  Enable theme:   $BIN/kurenai-ctl enable"
+echo "  Clipboard history is recorded LOCALLY once the shell runs (cliphist, in ~/.cache/cliphist) and deleted after 30 days."
+echo "  Pause it any time with the switch in the clipboard panel (SUPER+V); 'kurenai-ctl clip-wipe' deletes it all."
 echo
 echo "  LOCK SCREEN (nothing is locked or started yet). In this order:"
 echo "    1. $BIN/kurenai-ctl lock-preview     real password check in a normal window, locks nothing"
 echo "    2. $BIN/kurenai-ctl enable-lock      then start it: $BIN/kurenai-ctl lock-start"
 echo "    3. open a second terminal on a TTY (Ctrl+Alt+F3) and keep it logged in, THEN: $BIN/kurenai-ctl lock"
 echo "    4. $BIN/kurenai-ctl lock-hypridle    for lock on idle / before sleep"
+echo
+echo "  SHORTCUTS PAGE (new): works right away from a terminal:  qs -c kurenai ipc call shortcuts toggle"
+if ! grep -q 'shortcuts toggle' "$CFG/hypr/kurenai-binds.lua" 2>/dev/null; then
+  echo "  For a key, add ONE line to the table in $CFG/hypr/kurenai-binds.lua (after the SUPER + L line):"
+  echo '      { "SUPER + SLASH",         QS .. "shortcuts toggle" },'
+  echo "  then: hyprctl reload   (the page itself needs no reload: it follows your config files live)"
+fi
 case ":$PATH:" in *":$BIN:"*) ;; *) echo "  (note: $BIN is not on your PATH; use the full path above)";; esac
 [ -n "${REPLACED:-}" ] && [ -d "$REPLACED" ] && echo "  Replaced files were moved to: $REPLACED"
 exit 0

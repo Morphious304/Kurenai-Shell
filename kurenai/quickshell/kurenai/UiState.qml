@@ -13,10 +13,14 @@ Singleton {
     property bool mediaOpen: false
     property bool calendarOpen: false
     property bool powerMenuOpen: false
+    property bool clipboardOpen: false
+    property bool sysmonOpen: false
+    property bool shortcutsOpen: false
 
     // true while ANY overlay is open (the OSD stays quiet then: the panel already shows the value)
     readonly property bool anyOpen: quickSettingsOpen || notificationsOpen || launcherOpen
                                     || mediaOpen || calendarOpen || powerMenuOpen
+                                    || clipboardOpen || sysmonOpen || shortcutsOpen
 
     function closeAll() {
         quickSettingsOpen = false;
@@ -25,6 +29,9 @@ Singleton {
         mediaOpen = false;
         calendarOpen = false;
         powerMenuOpen = false;
+        clipboardOpen = false;
+        sysmonOpen = false;
+        shortcutsOpen = false;
     }
 
     function toggleQuickSettings() { const v = !quickSettingsOpen; closeAll(); quickSettingsOpen = v; }
@@ -33,6 +40,9 @@ Singleton {
     function toggleMedia()         { const v = !mediaOpen;         closeAll(); mediaOpen = v; }
     function toggleCalendar()      { const v = !calendarOpen;      closeAll(); calendarOpen = v; }
     function togglePowerMenu()     { const v = !powerMenuOpen;     closeAll(); powerMenuOpen = v; }
+    function toggleClipboard()     { const v = !clipboardOpen;     closeAll(); clipboardOpen = v; }
+    function toggleSysmon()        { const v = !sysmonOpen;        closeAll(); sysmonOpen = v; }
+    function toggleShortcuts()     { const v = !shortcutsOpen;     closeAll(); shortcutsOpen = v; }
     function openLauncher()        { closeAll(); launcherOpen = true; }
     function openNotifications()   { closeAll(); notificationsOpen = true; }
 }

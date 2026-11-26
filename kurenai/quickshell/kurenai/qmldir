@@ -9,6 +9,9 @@ singleton System 1.0 System.qml
 singleton Media 1.0 Media.qml
 singleton Power 1.0 Power.qml
 singleton OsdState 1.0 OsdState.qml
+singleton Clipboard 1.0 Clipboard.qml
+singleton SysMon 1.0 SysMon.qml
+singleton Keybinds 1.0 Keybinds.qml
 BarItem 1.0 BarItem.qml
 Divider 1.0 Divider.qml
 Emblem 1.0 Emblem.qml
@@ -38,3 +41,7 @@ MediaPanel 1.0 MediaPanel.qml
 CalendarPanel 1.0 CalendarPanel.qml
 PowerMenu 1.0 PowerMenu.qml
 OsdWindow 1.0 OsdWindow.qml
+MeterRow 1.0 MeterRow.qml
+ClipboardPanel 1.0 ClipboardPanel.qml
+SysMonPanel 1.0 SysMonPanel.qml
+ShortcutsPanel 1.0 ShortcutsPanel.qml

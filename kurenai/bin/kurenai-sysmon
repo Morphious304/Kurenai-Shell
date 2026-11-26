@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# kurenai-sysmon: ONE read-only snapshot of system load, for the KURENAI system-monitor panel.
+# The panel runs it every couple of seconds while it is open, and never when it is closed.
+# It only reads /proc, /sys and `df`; it prints key=value lines and changes nothing.
+set -u
+SYS="${KURENAI_SYS:-/sys}"
+PROC="${KURENAI_PROC:-/proc}"
+
+# cpu: the raw jiffy counters (the panel turns two samples into a percentage)
+read -r _ u n s i w q sq st _ < "$PROC/stat"
+echo "cpu=$u $n $s $i $w $q $sq $st"
+
+awk '/^(MemTotal|MemAvailable|SwapTotal|SwapFree):/ { gsub(":", "", $1); print tolower($1) "=" $2 }' "$PROC/meminfo"
+
+read -r l1 l5 l15 _ < "$PROC/loadavg"
+echo "load=$l1 $l5 $l15"
+
+# CPU temperature (millidegrees -> degrees): the hottest reading of a CPU sensor; omitted if there is none
+t=""
+for h in "$SYS"/class/hwmon/hwmon*; do
+  [ -r "$h/name" ] || continue
+  case "$(cat "$h/name" 2>/dev/null)" in
+    coretemp|k10temp|zenpower)
+      for f in "$h"/temp*_input; do
+        [ -r "$f" ] || continue
+        v="$(cat "$f" 2>/dev/null)"
+        case "$v" in ''|*[!0-9]*) continue ;; esac
+        if [ -z "$t" ] || [ "$v" -gt "$t" ]; then t="$v"; fi
+      done
+      [ -n "$t" ] && break ;;
+  esac
+done
+if [ -z "$t" ]; then
+  for z in "$SYS"/class/thermal/thermal_zone*; do
+    [ "$(cat "$z/type" 2>/dev/null)" = "x86_pkg_temp" ] || continue
+    v="$(cat "$z/temp" 2>/dev/null)"
+    case "$v" in ''|*[!0-9]*) ;; *) t="$v"; break ;; esac
+  done
+fi
+[ -n "$t" ] && echo "temp=$(( t / 1000 ))"
+
+# storage: root, home and boot, one line per distinct filesystem (your root and home are separate volumes)
+df -P -B1 / /home /boot 2>/dev/null | awk 'NR > 1 && !seen[$1]++ { print "disk=" $6 " " $2 " " $3 }'
+exit 0

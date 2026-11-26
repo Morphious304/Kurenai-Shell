@@ -166,11 +166,22 @@ PanelOverlay {
                         color: Theme.text
                     }
                     Text {
-                        anchors { right: powerBtn.left; rightMargin: Theme.s2; verticalCenter: parent.verticalCenter }
+                        anchors { right: sysBtn.left; rightMargin: Theme.s2; verticalCenter: parent.verticalCenter }
                         text: "Esc to close"
                         font.family: Theme.fontMono
                         font.pixelSize: Theme.fsSmall - 1
                         color: Theme.muted
+                    }
+                    Btn {
+                        id: sysBtn
+                        anchors { right: powerBtn.left; verticalCenter: parent.verticalCenter }
+                        width: 28
+                        height: 24
+                        flat: true
+                        center: true
+                        icon: Theme.icons.chart
+                        iconSize: 12
+                        onClicked: UiState.toggleSysmon()         // CPU / memory / temperature / storage
                     }
                     Btn {
                         id: powerBtn

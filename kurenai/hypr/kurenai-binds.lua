@@ -5,6 +5,10 @@
 -- Each entry is { chord, shell command }. Edit the chords here; keep one entry per line,
 -- starting with `{ "` (kurenai-ctl reads this file to run the conflict check).
 --
+-- NOTE: there is deliberately NO bind for Ctrl+X / Ctrl+C / Ctrl+V. Those keys already work in every application, and a
+-- compositor-level bind would swallow them: copy/paste would stop working and Ctrl+C would no longer interrupt programs
+-- in the terminal. The clipboard history records whatever those keys copy, with no help from a bind.
+--
 -- The launcher bind falls back to Rofi if the Quickshell IPC call fails, so you are never
 -- left without a launcher. (Assumes `qs ipc call` exits non-zero when no shell is running;
 -- verify once with the shell stopped: qs -c kurenai ipc call launcher toggle; echo $?)
@@ -22,6 +26,9 @@ local binds = {
   { "SUPER + SHIFT + M",     QS .. "media toggle" },
   { "SUPER + ESCAPE",        QS .. "powermenu toggle" },
   { "SUPER + L",             "qs -c kurenai-lock ipc call lock lock" },
+  { "SUPER + V",             QS .. "clipboard toggle" },
+  { "SUPER + I",             QS .. "sysmon toggle" },
+  { "SUPER + SLASH",         QS .. "shortcuts toggle" },                -- keyboard shortcuts page (reads your Lua config live)
 }
 
 for _, b in ipairs(binds) do

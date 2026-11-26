@@ -13,6 +13,9 @@ import Quickshell.Io
 //   qs -c kurenai ipc call media toggle|playpause|next|previous
 //   qs -c kurenai ipc call calendar toggle
 //   qs -c kurenai ipc call powermenu toggle
+//   qs -c kurenai ipc call clipboard toggle|close|pause|resume
+//   qs -c kurenai ipc call sysmon toggle|close
+//   qs -c kurenai ipc call shortcuts toggle|open|close|rescan|status   (keyboard shortcuts page)
 //   qs -c kurenai ipc call osd brightness            (shows the brightness OSD; see `kurenai-ctl media-binds`)
 //   qs -c kurenai ipc call shell closeAll
 //   qs -c kurenai ipc show                            (lists every target and function)
@@ -61,8 +64,31 @@ Scope {
     }
 
     IpcHandler {
+        target: "shortcuts"
+        function toggle(): void { UiState.toggleShortcuts(); }
+        function open(): void { UiState.closeAll(); UiState.shortcutsOpen = true; }
+        function close(): void { UiState.shortcutsOpen = false; }
+        function rescan(): void { Keybinds.refresh(); }
+        function status(): string { return Keybinds.statusText(); }
+    }
+
+    IpcHandler {
         target: "osd"
         function brightness(): void { OsdState.requestBrightness(); }
+    }
+
+    IpcHandler {
+        target: "clipboard"
+        function toggle(): void { UiState.toggleClipboard(); }
+        function close(): void { UiState.clipboardOpen = false; }
+        function pause(): void { Clipboard.setPaused(true); }
+        function resume(): void { Clipboard.setPaused(false); }
+    }
+
+    IpcHandler {
+        target: "sysmon"
+        function toggle(): void { UiState.toggleSysmon(); }
+        function close(): void { UiState.sysmonOpen = false; }
     }
 
     IpcHandler {

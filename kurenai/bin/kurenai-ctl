@@ -72,6 +72,9 @@ Usage: kurenai-ctl <command>
   enable-autostart   start the shell with the session: add ONE marked line
   disable-autostart  remove that line
 
+ Shortcuts page
+  shortcuts [cmd]    status (default) | toggle | rescan : talk to the running shell's shortcuts page (what it read, from which files)
+
  Running the shell
   start              start the shell detached (no duplicates)
   stop               stop the shell
@@ -79,6 +82,11 @@ Usage: kurenai-ctl <command>
   logs               show the shell's log (qs log)
   debug              stop the running shell, then run it in the foreground with live logs (Ctrl+C quits)
   media-binds        print (never apply) the brightness-key change for the OSD; only needed WITHOUT udevadm
+
+ Clipboard history
+  clip <cmd>         talk to the engine directly (kurenai-clip list|pins|status|...)
+  clip-status        what is recording, how many entries, whether the database is private
+  clip-wipe          delete the whole history (asks first; pinned items are kept)
 
  Lock screen (separate process: kurenai-lock)
   enable-lock        Hyprland side: restart-after-crash setting + start the lock process with the session
@@ -182,6 +190,8 @@ cmd_stop() {
     echo "Could not stop the KURENAI shell (pid $(shell_pids all | tr '\n' ' ')). Try: kill <pid>" >&2
     return 1
   fi
+  # the clipboard recorders (Clipboard.qml) are children of the shell too: do not leave them recording
+  pkill -f "$CLIP_WATCH_PAT" 2>/dev/null || true
   # the brightness watcher (System.qml) is a child process; make sure none is left behind
   pkill -f 'udevadm monitor --udev --subsystem-match=backlight' 2>/dev/null || true
   if [ "$was" -eq 1 ]; then echo "KURENAI shell stopped."; else echo "KURENAI shell was not running."; fi
@@ -356,6 +366,15 @@ cmd_binds_check() {
   [ "$clashes" -eq 0 ]
 }
 
+# ------------------------------------------------------------------ shortcuts page
+cmd_shortcuts() {
+  local sub="${1:-status}"
+  case "$sub" in status|toggle|rescan|open|close) ;; *) die "unknown shortcuts command '$sub' (status | toggle | rescan | open | close)";; esac
+  have qs || die "qs not found"
+  if ! shell_running; then die "the KURENAI shell is not running (kurenai-ctl start)"; fi
+  qs -c kurenai ipc call shortcuts "$sub"
+}
+
 # ------------------------------------------------------------------ OSD for brightness keys
 # Volume, microphone and media-key OSDs need nothing: the shell watches PipeWire/MPRIS itself.
 # Brightness has no event to watch, so the key bind has to tell the shell. This only PRINTS the change.
@@ -379,6 +398,26 @@ cmd_media_binds() {
   done <<< "$lines"
   echo "Then: hyprctl reload"
   echo "(The && makes the OSD appear only after brightnessctl has finished, so it shows the new value.)"
+}
+
+# ------------------------------------------------------------------ clipboard history (kurenai-clip)
+CLIP_WATCH_PAT='wl-paste .*kurenai-clip store'
+clip_helper() {
+  local here; here="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+  if [ -x "$here/kurenai-clip" ]; then printf '%s' "$here/kurenai-clip"; else printf '%s' "$HOME/.local/bin/kurenai-clip"; fi
+}
+clip_watchers() { pgrep -f "$CLIP_WATCH_PAT" 2>/dev/null; }
+
+cmd_clip()        { [ -x "$(clip_helper)" ] || die "kurenai-clip is not installed; run install.sh"; "$(clip_helper)" "$@"; }
+cmd_clip_status() {
+  echo "recording processes: $(clip_watchers | grep -c .)  (2 while recording: text + images; 0 when paused or off)"
+  cmd_clip status
+}
+# The only "delete everything" path outside the panel: it asks first, and only works at a terminal.
+cmd_clip_wipe() {
+  [ -t 0 ] || die "this asks for confirmation, so it needs a terminal"
+  local a; read -r -p "Delete the WHOLE clipboard history (pinned items are kept)? [y/N] " a
+  case "$a" in y|Y|yes|YES) cmd_clip wipe && echo "History deleted." ;; *) echo "Cancelled." ;; esac
 }
 
 # ------------------------------------------------------------------ lock screen (kurenai-lock)
@@ -650,6 +689,11 @@ cmd_validate() {
   done
   [ -f "$QS_DIR/kurenai/shell.qml" ] && ok "quickshell/kurenai/shell.qml present" || bad "quickshell/kurenai/shell.qml missing"
   [ -f "$QS_DIR/kurenai/qmldir" ]    && ok "qmldir present" || bad "qmldir missing"
+  [ -f "$QS_DIR/kurenai/BindParser.js" ] && ok "shortcuts reader (BindParser.js) present" || bad "BindParser.js missing: the shortcuts page needs it (it is not listed in qmldir)"
+  if [ -f "$HYPR_DIR/kurenai-binds.lua" ]; then
+    grep -q 'shortcuts toggle' "$HYPR_DIR/kurenai-binds.lua" && ok "keybind for the shortcuts page present" \
+      || warn "no keybind for the shortcuts page yet: add the SUPER + SLASH line from the README to kurenai-binds.lua (or run: qs -c kurenai ipc call shortcuts toggle)"
+  fi
   if [ -f "$QS_DIR/kurenai/qmldir" ]; then
     # every file named in qmldir must exist
     local missing=""
@@ -790,6 +834,31 @@ cmd_validate() {
     warn "kurenai-lock not installed (run install.sh)"
   fi
 
+  echo "Clipboard history and system monitor"
+  local miss="" t
+  for t in cliphist wl-copy wl-paste; do have "$t" || miss="$miss $t"; done
+  [ -z "$miss" ] && ok "cliphist, wl-copy and wl-paste installed" || warn "missing:$miss (sudo pacman -S cliphist wl-clipboard)"
+  have xdg-mime && ok "xdg-utils present (lets image entries keep their type)" || warn "xdg-mime missing: install xdg-utils for image entries"
+  [ -x "$(clip_helper)" ] && ok "kurenai-clip installed" || warn "kurenai-clip not installed (run install.sh)"
+  [ -x "$HOME/.local/bin/kurenai-sysmon" ] || [ -x "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/kurenai-sysmon" ] \
+    && ok "kurenai-sysmon installed" || warn "kurenai-sysmon not installed (run install.sh)"
+  if grep -qs 'clipboardEnabled: *false' "$QS_DIR/kurenai/Config.qml"; then
+    ok "clipboard recording is turned OFF in Config.qml (nothing is recorded)"
+  elif [ -x "$(clip_helper)" ]; then
+    local nw; nw="$(clip_watchers | grep -c .)"
+    local ps; ps="$("$(clip_helper)" paused 2>/dev/null)"
+    if [ "$ps" = "yes" ]; then ok "recording is PAUSED (the switch in the clipboard panel)"
+    elif ! shell_running; then warn "the shell is not running, so nothing is being recorded"
+    elif [ "$nw" -eq 2 ]; then ok "recording: 2 watchers (text + images)"
+    elif [ "$nw" -gt 2 ]; then warn "$nw recorders running (expected 2): a stray one from an old session; kurenai-ctl restart clears it"
+    else warn "$nw recorders running (expected 2): see: qs log -c kurenai"; fi
+    local mode; mode="$(stat -c %a "${XDG_CACHE_HOME:-$HOME/.cache}/cliphist/db" 2>/dev/null || true)"
+    if [ -z "$mode" ]; then ok "no cliphist database yet (nothing recorded so far)"
+    elif [ "$mode" = "600" ]; then ok "cliphist database is private (mode 600)"
+    else warn "cliphist database mode is $mode (should be 600); it is fixed on the next recording, or: chmod 600 ~/.cache/cliphist/db"; fi
+    ok "history is deleted after $(grep -oE 'clipboardRetentionDays: *[0-9]+' "$QS_DIR/kurenai/Config.qml" 2>/dev/null | grep -oE '[0-9]+$' || echo 30) days; pinned items are kept"
+  fi
+
   echo "Launcher fallback"
   have rofi && ok "rofi installed: $(command -v rofi)" || warn "rofi not found: the launcher fallback will not work"
   [ -f "$STATE/launcher.json" ] && ok "launcher.json present" || warn "launcher.json missing (the installer creates it)"
@@ -829,6 +898,10 @@ case "${1:-}" in
   logs)              cmd_logs ;;
   debug)             cmd_debug ;;
   media-binds)       cmd_media_binds ;;
+  clip)              shift; cmd_clip "$@" ;;
+  clip-status)       cmd_clip_status ;;
+  clip-wipe)         cmd_clip_wipe ;;
+  shortcuts)         shift; cmd_shortcuts "$@" ;;
   enable-lock)       cmd_enable_lock ;;
   disable-lock)      cmd_disable_lock ;;
   lock)              cmd_lock ;;

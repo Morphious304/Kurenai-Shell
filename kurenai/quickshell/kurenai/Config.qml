@@ -47,6 +47,12 @@ Singleton {
     // With the KURENAI lock screen running (kurenai-lock), "Lock" uses it, and "Suspend" locks first.
     readonly property bool lockBeforeSuspend: true
 
+    // ---- keyboard shortcuts page (ShortcutsPanel / Keybinds) ----------------------------
+    // The Hyprland Lua config to read. Empty = $XDG_CONFIG_HOME/hypr/hyprland.lua (usually ~/.config/hypr/hyprland.lua).
+    // Every file it pulls in with require()/dofile() is followed automatically.
+    readonly property string hyprMainFile: ""
+    readonly property int shortcutsVisibleRows: 12      // rows visible before the list scrolls
+
     // ---- on-screen display ---------------------------------------------------------
     readonly property int osdTimeout: 1400              // ms
     readonly property bool osdVolume: true
@@ -54,6 +60,15 @@ Singleton {
     readonly property bool osdBrightness: true          // needs the one-line bind change, see `kurenai-ctl media-binds`
     readonly property bool osdMediaPlayPause: true
     readonly property bool osdMediaTrack: true          // shows on every track change, incl. automatic ones
+
+    // ---- clipboard history (needs cliphist + wl-clipboard) -------------------------------
+    readonly property bool clipboardEnabled: true       // false = record nothing at all
+    readonly property int clipboardRetentionDays: 30    // older history is deleted automatically; PINNED items are kept
+    readonly property int clipboardMaxItems: 500
+    readonly property int clipboardMaxStoreMB: 10       // biggest single item recorded (cliphist's own default is 5 MB: too small for screenshots)
+
+    // ---- system monitor ---------------------------------------------------------------------
+    readonly property int sysmonInterval: 2000          // ms; it only samples while its panel is open
 
     // ---- notifications -----------------------------------------------------
     readonly property int maxPopups: 4
