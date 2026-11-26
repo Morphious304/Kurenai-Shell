@@ -111,6 +111,16 @@ Usage: kurenai-ctl <command>
   reset-launcher     forget favourites, recents, Prime favourites and the Run command history
   rofi-theme         read-only: is the KURENAI Rofi theme installed, is Rofi using it, and how to switch it on
 
+ Wallpaper colours (matugen)
+  theme [status]     is it on, which scheme, which image the colours came from
+  theme on|off       follow the wallpaper (on also applies the current one now) / back to the built-in KURENAI colours
+  theme sync         recolour from the wallpaper awww shows right now
+  theme type <name>  tonal-spot vibrant fidelity expressive neutral monochrome content fruit-salad rainbow (or: next)
+  theme contrast N   -1 .. 1 (0 = standard)         theme accent wallpaper|vermilion   (vermilion = only neutrals follow)
+  theme hypr on|off  Hyprland borders follow too     theme rofi on|off   Rofi theme follows too
+  theme reset        built-in colours everywhere and forget the theme settings
+  theme-apply [--auto] <image>   recolour from a specific image (the Walls tab calls this)
+
  Undo
   rollback           stop shell, restore the old notifier, remove ALL hooks, move KURENAI files aside
   restore            rollback, and also restore hyprland.lua from the latest backup
@@ -299,6 +309,236 @@ cmd_rofi_theme() {
   fi
   echo "try it once:  rofi -show drun -theme kurenai"
   echo "undo:         remove that one line from config.rasi (nothing else was changed)"
+}
+
+# ------------------------------------------------------------------ wallpaper colours (matugen)
+# One writer for everything: matugen renders three templates (shell palette, Rofi theme, Hyprland borders) into
+# $STATE/next/, they are sanity-checked, and only then copied into place. A failure at any step leaves the
+# colours you already have. `kurenai-ctl theme off` restores the built-in KURENAI colours everywhere.
+THEME_CONF="$STATE/theme.conf"       # key=value: enabled type contrast accent hypr rofi
+THEME_SRC="$STATE/theme.source"      # the image the current palette was made from
+THEME_PAL="$STATE/palette.json"      # read live by the shell and the lock screen
+THEME_TPL="$STATE/matugen"           # templates (installed by install.sh)
+THEME_TYPES="tonal-spot vibrant fidelity expressive neutral monochrome content fruit-salad rainbow"
+
+theme_get() {   # theme_get KEY DEFAULT
+  local v=""
+  [ -f "$THEME_CONF" ] && v="$(sed -n "s/^$1=//p" "$THEME_CONF" | tail -n 1)"
+  printf '%s' "${v:-$2}"
+}
+theme_set() {   # theme_set KEY VALUE  (rewrites the small file, keeps the other keys)
+  mkdir -p "$STATE"
+  local tmp="$THEME_CONF.tmp.$$"
+  { [ -f "$THEME_CONF" ] && grep -v "^$1=" "$THEME_CONF"; printf '%s=%s\n' "$1" "$2"; } > "$tmp" && mv "$tmp" "$THEME_CONF"
+}
+theme_enabled() { [ "$(theme_get enabled 0)" = "1" ]; }
+
+# write $2 over $1 in place (same inode: the shell's file watcher keeps following it)
+theme_put() { mkdir -p "$(dirname "$1")"; cat "$2" > "$1"; }
+
+theme_hypr_reload() {
+  [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && have hyprctl || return 0
+  hyprctl reload >/dev/null 2>&1 || true
+}
+
+# Built-in colours everywhere (palette off, Hyprland file empty, Rofi theme back to the shipped one).
+theme_restore_defaults() {
+  mkdir -p "$STATE"
+  printf '{\n  "enabled": false\n}\n' > "$THEME_PAL.tmp.$$" && theme_put "$THEME_PAL" "$THEME_PAL.tmp.$$"; rm -f "$THEME_PAL.tmp.$$"
+  local changed=0
+  if [ -d "$HYPR_DIR" ]; then
+    local empty="$STATE/next.empty.lua"
+    printf -- '-- ~/.config/hypr/kurenai-colors.lua\n-- Empty = the built-in KURENAI colours. `kurenai-ctl theme-apply` fills this from your wallpaper (matugen);\n-- `kurenai-ctl theme reset` empties it again. Do not edit by hand: it is overwritten.\nreturn {}\n' > "$empty"
+    cmp -s "$empty" "$HYPR_DIR/kurenai-colors.lua" 2>/dev/null || { theme_put "$HYPR_DIR/kurenai-colors.lua" "$empty"; changed=1; }
+    rm -f "$empty"
+  fi
+  if [ -f "$THEME_TPL/kurenai.default.rasi" ] && [ -d "$CFG/rofi/themes" ]; then
+    cp "$THEME_TPL/kurenai.default.rasi" "$CFG/rofi/themes/kurenai.rasi"
+  fi
+  [ "$changed" = 1 ] && theme_hypr_reload
+  return 0
+}
+
+theme_matugen_version() { matugen --version 2>/dev/null | head -n 1; }
+
+cmd_theme_apply() {
+  local auto=0 img=""
+  while [ $# -gt 0 ]; do
+    case "$1" in --auto) auto=1 ;; --) shift; img="${1:-}"; break ;; -*) die "theme-apply: unknown option $1" ;; *) img="$1" ;; esac
+    shift
+  done
+  if [ "$auto" = 1 ] && ! theme_enabled; then return 0; fi          # the shell calls this after every wallpaper: silent when off
+  [ -n "$img" ] || die "usage: kurenai-ctl theme-apply [--auto] <image>"
+  have matugen || die "matugen is not installed (sudo pacman -S matugen)"
+  [ -f "$img" ] && [ -r "$img" ] || die "cannot read image: $img"
+  [ -d "$THEME_TPL" ] && [ -f "$THEME_TPL/palette.json.tpl" ] || die "templates missing in $THEME_TPL (re-run install.sh)"
+  case "$STATE$CFG" in *\'*) die "your config or data folder path contains a single quote; refusing (it would break matugen's config file)" ;; esac
+
+  mkdir -p "$STATE/next"
+  exec 9>"$STATE/.theme.lock"
+  if have flock; then flock -w 15 9 || die "another theme update is still running"; fi
+
+  local type contrast accent hypr rofi
+  type="$(theme_get type tonal-spot)"; contrast="$(theme_get contrast 0)"; accent="$(theme_get accent wallpaper)"
+  hypr="$(theme_get hypr 1)"; rofi="$(theme_get rofi 1)"
+  case " $THEME_TYPES " in *" $type "*) ;; *) type=tonal-spot ;; esac
+
+  # matugen's config: one block per output. Everything is first rendered into $STATE/next/.
+  local cfg="$STATE/matugen.toml" next="$STATE/next"
+  rm -f "$next"/palette.json "$next"/kurenai.rasi "$next"/kurenai-colors.lua
+  {
+    printf '# generated by kurenai-ctl theme-apply: do not edit\n[config]\n\n'
+    printf "[templates.palette]\ninput_path = '%s/palette.json.tpl'\noutput_path = '%s/palette.json'\n\n" "$THEME_TPL" "$next"
+    if [ "$rofi" = 1 ] && [ -f "$THEME_TPL/kurenai.rasi.tpl" ] && [ -d "$CFG/rofi" ]; then
+      printf "[templates.rofi]\ninput_path = '%s/kurenai.rasi.tpl'\noutput_path = '%s/kurenai.rasi'\n\n" "$THEME_TPL" "$next"
+    fi
+    if [ "$hypr" = 1 ] && [ -f "$THEME_TPL/kurenai-colors.lua.tpl" ] && [ -d "$HYPR_DIR" ]; then
+      printf "[templates.hypr]\ninput_path = '%s/kurenai-colors.lua.tpl'\noutput_path = '%s/kurenai-colors.lua'\n\n" "$THEME_TPL" "$next"
+    fi
+  } > "$cfg"
+
+  # flags differ between matugen generations: ask the installed one what it knows
+  local help flags=()
+  help="$(matugen image --help 2>&1 || true)"
+  case "$help" in *--prefer*) flags+=(--prefer saturation) ;; esac     # 4.x: needed when there is no terminal (else it refuses to choose a colour)
+  if [ "$contrast" != "0" ]; then case "$help" in *--contrast*) flags+=(--contrast "$contrast") ;; esac; fi
+
+  local log="$STATE/next/matugen.log"
+  if have timeout; then
+    timeout 30 matugen image "$img" -c "$cfg" -m dark -t "scheme-$type" "${flags[@]}" -q </dev/null >"$log" 2>&1
+  else
+    matugen image "$img" -c "$cfg" -m dark -t "scheme-$type" "${flags[@]}" -q </dev/null >"$log" 2>&1
+  fi || { echo "matugen failed: $(grep -v '^$' "$log" | head -n 1)" >&2; return 1; }
+
+  # sanity checks before anything is replaced
+  [ -s "$next/palette.json" ] && grep -q '"enabled": true' "$next/palette.json" && ! grep -q '{{' "$next/palette.json" \
+    || { echo "matugen produced no usable palette (see $log)" >&2; return 1; }
+  if [ -f "$next/kurenai.rasi" ]; then
+    grep -q '^window {' "$next/kurenai.rasi" && ! grep -q '{{' "$next/kurenai.rasi" || { echo "rofi theme render looks wrong; keeping the old one" >&2; rm -f "$next/kurenai.rasi"; }
+  fi
+  if [ -f "$next/kurenai-colors.lua" ]; then
+    if grep -q '{{' "$next/kurenai-colors.lua" || { have luac5.4 && ! luac5.4 -p "$next/kurenai-colors.lua" 2>/dev/null; } || { have luac && ! luac -p "$next/kurenai-colors.lua" 2>/dev/null; }; then
+      echo "hyprland colours render looks wrong; keeping the old ones" >&2; rm -f "$next/kurenai-colors.lua"
+    fi
+  fi
+
+  # "keep my vermilion accent": only the neutrals follow the wallpaper
+  if [ "$accent" = "vermilion" ]; then
+    sed -i 's/"pinAccent": false/"pinAccent": true/' "$next/palette.json"
+    [ -f "$next/kurenai-colors.lua" ] && sed -i 's/pinAccent  = false/pinAccent  = true/' "$next/kurenai-colors.lua"
+    [ -f "$next/kurenai.rasi" ] && sed -i -e 's/^\(    accent:      \)#[0-9A-Fa-f]*;/\1#F04436;/' -e 's/^\(    accent-text: \)#[0-9A-Fa-f]*;/\1#FF6B5C;/' \
+        -e 's/^\(    ink:         \)#[0-9A-Fa-f]*;/\1#1A1A1A;/' -e 's/^\(    teal:        \)#[0-9A-Fa-f]*;/\1#70A6A0;/' "$next/kurenai.rasi"
+  fi
+
+  local hypr_changed=0
+  if [ -f "$next/kurenai-colors.lua" ]; then
+    cmp -s "$next/kurenai-colors.lua" "$HYPR_DIR/kurenai-colors.lua" 2>/dev/null || { theme_put "$HYPR_DIR/kurenai-colors.lua" "$next/kurenai-colors.lua"; hypr_changed=1; }
+  fi
+  [ -f "$next/kurenai.rasi" ] && cp "$next/kurenai.rasi" "$CFG/rofi/themes/kurenai.rasi"
+  theme_put "$THEME_PAL" "$next/palette.json"          # last: the shell and the lock screen switch now
+  printf '%s\n' "$img" > "$THEME_SRC"
+  [ "$hypr_changed" = 1 ] && theme_hypr_reload
+  [ "$auto" = 1 ] || echo "colours updated from: $img  (scheme-$type, $(theme_matugen_version))"
+  return 0
+}
+
+# the wallpaper awww shows right now (first output that has an image)
+theme_current_wallpaper() {
+  have awww || return 1
+  awww query -j 2>/dev/null | grep -o '"image": *"[^"]*"' | head -n 1 | sed 's/^"image": *"//; s/"$//'
+}
+
+cmd_theme_sync() {
+  local auto=0 force=0 a
+  for a in "$@"; do case "$a" in --auto) auto=1 ;; --force) force=1 ;; esac; done
+  if [ "$auto" = 1 ] && ! theme_enabled; then return 0; fi
+  local cur; cur="$(theme_current_wallpaper || true)"
+  if [ -z "$cur" ]; then
+    [ "$auto" = 1 ] || echo "no wallpaper reported by awww (is awww-daemon running and a wallpaper set?)" >&2
+    return 1
+  fi
+  if [ "$force" = 0 ] && [ -f "$THEME_SRC" ] && [ "$(cat "$THEME_SRC" 2>/dev/null)" = "$cur" ] && [ -s "$THEME_PAL" ] && grep -q '"enabled": true' "$THEME_PAL"; then
+    [ "$auto" = 1 ] || echo "colours already match the current wallpaper"
+    return 0
+  fi
+  if [ "$auto" = 1 ]; then cmd_theme_apply --auto "$cur"; else cmd_theme_apply "$cur"; fi
+}
+
+cmd_theme() {
+  local act="${1:-status}"; [ $# -gt 0 ] && shift
+  case "$act" in
+    status)
+      echo "wallpaper colours: $(theme_enabled && echo ON || echo off)"
+      echo "  matugen:   $(have matugen && theme_matugen_version || echo 'not installed (sudo pacman -S matugen)')"
+      echo "  scheme:    $(theme_get type tonal-spot)   contrast: $(theme_get contrast 0)   accent: $(theme_get accent wallpaper)"
+      echo "  also:      hyprland borders: $([ "$(theme_get hypr 1)" = 1 ] && echo on || echo off), rofi theme: $([ "$(theme_get rofi 1)" = 1 ] && echo on || echo off)"
+      echo "  source:    $(cat "$THEME_SRC" 2>/dev/null || echo none)"
+      echo "  palette:   $(grep -q '"enabled": true' "$THEME_PAL" 2>/dev/null && echo 'in use' || echo 'built-in KURENAI colours')   ($THEME_PAL)"
+      echo "  templates: $([ -f "$THEME_TPL/palette.json.tpl" ] && echo installed || echo "MISSING (re-run install.sh)")"
+      ;;
+    on)
+      have matugen || die "matugen is not installed (sudo pacman -S matugen)"
+      theme_set enabled 1
+      echo "wallpaper colours: ON"
+      cmd_theme_sync --force || echo "(no colours yet: set a wallpaper from the launcher's Walls tab, or run: kurenai-ctl theme sync)"
+      ;;
+    off)
+      theme_set enabled 0
+      theme_restore_defaults
+      echo "wallpaper colours: off (built-in KURENAI colours restored in the shell, lock screen, Rofi and Hyprland)"
+      ;;
+    reset)
+      theme_set enabled 0
+      theme_restore_defaults
+      rm -f "$THEME_CONF" "$THEME_SRC" "$STATE/matugen.toml"
+      rm -rf "$STATE/next"
+      echo "wallpaper colours reset: built-in colours restored and theme settings forgotten"
+      ;;
+    sync) cmd_theme_sync --force ;;
+    type)
+      local t="${1:-}"
+      if [ "$t" = "next" ]; then
+        local cur nx first="" take=0; cur="$(theme_get type tonal-spot)"; nx=""
+        for x in $THEME_TYPES; do [ -z "$first" ] && first="$x"; if [ "$take" = 1 ]; then nx="$x"; break; fi; [ "$x" = "$cur" ] && take=1; done
+        t="${nx:-$first}"
+      fi
+      case " $THEME_TYPES " in *" $t "*) ;; *) die "scheme must be one of: $THEME_TYPES  (or: next)" ;; esac
+      theme_set type "$t"; echo "scheme: $t"
+      theme_enabled && { cmd_theme_sync --force --auto || true; }
+      ;;
+    contrast)
+      case "${1:-}" in -1|0|1|-0.[0-9]*|0.[0-9]*) ;; *) die "contrast is a number from -1 to 1 (0 = standard)" ;; esac
+      theme_set contrast "$1"; echo "contrast: $1"
+      theme_enabled && { cmd_theme_sync --force --auto || true; }
+      ;;
+    accent)
+      case "${1:-}" in wallpaper|vermilion) ;; *) die "usage: kurenai-ctl theme accent wallpaper|vermilion" ;; esac
+      theme_set accent "$1"; echo "accent: $1"
+      theme_enabled && { cmd_theme_sync --force --auto || true; }
+      ;;
+    hypr|rofi)
+      case "${1:-}" in on|off) ;; *) die "usage: kurenai-ctl theme $act on|off" ;; esac
+      theme_set "$act" "$([ "$1" = on ] && echo 1 || echo 0)"; echo "$act: $1"
+      if theme_enabled; then
+        if [ "$1" = off ]; then theme_restore_defaults_part "$act"; fi
+        cmd_theme_sync --force --auto || true
+      fi
+      ;;
+    *) die "usage: kurenai-ctl theme [status|on|off|reset|sync|type <name|next>|contrast <-1..1>|accent wallpaper|vermilion|hypr on|off|rofi on|off]" ;;
+  esac
+}
+
+# switch one extra off without touching the shell palette
+theme_restore_defaults_part() {
+  case "$1" in
+    hypr)
+      [ -d "$HYPR_DIR" ] || return 0
+      printf -- '-- ~/.config/hypr/kurenai-colors.lua\n-- Empty = the built-in KURENAI colours. `kurenai-ctl theme-apply` fills this from your wallpaper (matugen);\n-- `kurenai-ctl theme reset` empties it again. Do not edit by hand: it is overwritten.\nreturn {}\n' > "$STATE/next.empty.lua"
+      theme_put "$HYPR_DIR/kurenai-colors.lua" "$STATE/next.empty.lua"; rm -f "$STATE/next.empty.lua"; theme_hypr_reload ;;
+    rofi)
+      [ -f "$THEME_TPL/kurenai.default.rasi" ] && [ -d "$CFG/rofi/themes" ] && cp "$THEME_TPL/kurenai.default.rasi" "$CFG/rofi/themes/kurenai.rasi" ;;
+  esac
+  return 0
 }
 
 # ------------------------------------------------------------------ keybind conflicts
@@ -911,6 +1151,16 @@ cmd_validate() {
       ok "wallpaper folder $wd: $(find -L "$wd" -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' -o -iname '*.bmp' -o -iname '*.tga' -o -iname '*.tiff' \) 2>/dev/null | wc -l) images (subfolders included)"
     else warn "wallpaper folder $wd does not exist (Config.wallpaperDirs)"; fi
   done <<< "$wdirs"
+  echo "Wallpaper colours"
+  if have matugen; then ok "matugen found: $(theme_matugen_version)"
+  else warn "matugen not found: Quick Settings hides the wallpaper-colours tiles (sudo pacman -S matugen)"; fi
+  [ -f "$THEME_TPL/palette.json.tpl" ] && ok "matugen templates installed" || warn "matugen templates missing in $THEME_TPL (re-run install.sh)"
+  if [ -s "$THEME_PAL" ]; then ok "palette.json present ($(grep -q '"enabled": true' "$THEME_PAL" && echo 'wallpaper colours in use' || echo 'built-in colours'))"
+  else warn "palette.json missing (the installer creates it; kurenai-ctl theme reset recreates it)"; fi
+  if theme_enabled; then
+    [ -s "$THEME_SRC" ] && ok "colours made from: $(cat "$THEME_SRC")" || warn "wallpaper colours are on but no image has been applied yet (kurenai-ctl theme sync)"
+    [ -f "$HYPR_DIR/kurenai-colors.lua" ] && ok "hypr/kurenai-colors.lua present" || warn "hypr/kurenai-colors.lua missing: Hyprland keeps the built-in border colours"
+  fi
   have notify-send && ok "notify-send available (for testing)" || warn "notify-send missing (pacman -S libnotify) for testing notifications"
 
   echo "Fonts"
@@ -969,6 +1219,9 @@ case "${1:-}" in
   notif-restore)     cmd_notif_restore ;;
   reset-launcher)    cmd_reset_launcher ;;
   rofi-theme)        cmd_rofi_theme ;;
+  theme)             shift; cmd_theme "$@" ;;
+  theme-apply)       shift; cmd_theme_apply "$@" ;;
+  theme-sync)        shift; cmd_theme_sync "$@" ;;
   rollback)          cmd_rollback ;;
   restore)           cmd_restore ;;
   *)                 usage; [ -z "${1:-}" ] || exit 1 ;;

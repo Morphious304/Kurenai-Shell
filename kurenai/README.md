@@ -21,7 +21,7 @@ SDDM, PipeWire, NetworkManager, kitty. Other setups may work but were not tried.
 - [10. What is verified and what is not](#10-what-is-verified-and-what-is-not)
 
 Detail pages (in `docs/`): [LOCK-SCREEN](docs/LOCK-SCREEN.md), [CLIPBOARD-AND-SYSMON](docs/CLIPBOARD-AND-SYSMON.md),
-[LAUNCHER](docs/LAUNCHER.md), [SHORTCUTS-PAGE](docs/SHORTCUTS-PAGE.md), [PANELS](docs/PANELS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md),
+[LAUNCHER](docs/LAUNCHER.md), [THEME](docs/THEME.md) (wallpaper colours), [SHORTCUTS-PAGE](docs/SHORTCUTS-PAGE.md), [PANELS](docs/PANELS.md), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md),
 [CHANGELOG](docs/CHANGELOG.md).
 
 ---
@@ -60,6 +60,7 @@ for you. Commands marked **sudo** change your system; read them before running t
 | Package | Feature | If missing |
 |---|---|---|
 | `rofi` | fallback launcher (`SUPER + SHIFT + SPACE`, and the Quickshell launcher falls back to it); themed by `rofi/kurenai.rasi` | no fallback launcher: install it, it is your safety net |
+| `matugen` | **wallpaper colours**: shell, lock screen, Rofi and borders follow the wallpaper ([docs/THEME.md](docs/THEME.md)) | the Quick Settings tiles are hidden; built-in colours stay |
 | `nvidia-prime` (provides `prime-run`) | launcher **Prime** tab | the tab says it is not installed |
 | `brightnessctl` | brightness slider | row shows an install hint |
 | `power-profiles-daemon` | Saver / Balanced / Performance | section hidden |
@@ -97,6 +98,7 @@ kurenai/
 │   ├── kurenai-clip              clipboard-history engine (cliphist + wl-clipboard)
 │   └── kurenai-sysmon            read-only system snapshot for the monitor panel
 ├── rofi/kurenai.rasi             Rofi theme (installed to ~/.config/rofi/themes/)
+├── matugen/                      templates for wallpaper colours (installed to ~/.local/share/kurenai/matugen/)
 ├── hypr/                         all opt-in; only kurenai.lua is KURENAI's own
 │   ├── kurenai.lua               appearance (borders, gaps, rounding, shadow, motion)
 │   ├── kurenai-binds.lua         15 keybinds (launcher + its Run/Prime/Walls tabs, panels, lock, clipboard, monitor, shortcuts)
@@ -114,6 +116,7 @@ kurenai/
 │   │   ├── Apps.qml  Launcher.qml                      desktop-entry index and the launcher (tab host)
 │   │   ├── LauncherList.qml  LauncherRun.qml  LauncherWalls.qml   the tabs (Apps+Prime share one list)
 │   │   ├── Runner.qml  Walls.qml                       Run tab backend; wallpaper scan and awww calls
+│   │   ├── ThemeCtl.qml                                wallpaper colours: runs kurenai-ctl theme-*, shows the state
 │   │   ├── QuickSettings.qml  Audio.qml  System.qml    quick settings and the state behind it
 │   │   ├── Media.qml  MediaPanel.qml                   MPRIS
 │   │   ├── CalendarPanel.qml  Power.qml  PowerMenu.qml  OsdState.qml  OsdWindow.qml
@@ -138,6 +141,7 @@ Where things land after `install.sh`:
 | `quickshell/kurenai`, `quickshell/kurenai-lock` | `~/.config/quickshell/` |
 | `hypr/*.lua`, `hypr/hypridle.kurenai.conf` | `~/.config/hypr/` |
 | `rofi/kurenai.rasi` | `~/.config/rofi/themes/` |
+| `matugen/` | `~/.local/share/kurenai/matugen/` |
 | `bin/*` | `~/.local/bin/` (put it on your `PATH`) |
 | backups, notes, favourites, Run history | `~/.local/share/kurenai/` |
 
@@ -294,7 +298,8 @@ Quickshell reloads QML when you save a file, so most changes appear immediately.
 
 | To change | Edit | Notes |
 |---|---|---|
-| Colours | `~/.config/quickshell/kurenai/Theme.qml` | roles: `bg surface raised panelBg`, `text text2 muted`, `accent accentText accentDeep teal rose amber`. Keep small red text on `accentText`, not `accent` (contrast) |
+| Colours that follow the wallpaper | Quick Settings, or `kurenai-ctl theme ...` | [docs/THEME.md](docs/THEME.md) |
+| Fixed (built-in) colours | `~/.config/quickshell/kurenai/Theme.qml` | the `defaults` table; with wallpaper colours on, these are only the fallback. Roles: `bg surface raised panelBg`, `text text2 muted`, `accent accentText accentDeep teal rose amber`. Keep small red text on `accentText`, not `accent` (contrast) |
 | Fonts | `Theme.qml`: `fontUi`, `fontMono`, `fontDisplay` | check what you have with `fc-list \| grep -i NAME` |
 | Sizes, spacing, radii | `Theme.qml`: `s1..s6` (4 px unit), `rSm/rMd/rLg`, `barHeight`, `*Width` | |
 | Animation speed | `Theme.qml`: `durFast 120`, `durBase 220`, `durSlow 320` (ms) | |
@@ -395,6 +400,7 @@ Against the original project's "definition of done":
 | Palette and consistency across bar and panels | one `Theme.qml`; artboard of every panel published |
 | Bar shows real information; workspaces reflect Hyprland and switch | implemented; confirm on your screen |
 | Launcher discovers installed apps; Rofi remains | implemented; Rofi untouched, plus an optional matching theme |
+| Wallpaper colours (matugen) | real matugen 4.2.0 run over 720 generated palettes (40 test images x 9 schemes x 2 accent modes) and checked by the same guard code as Theme.qml, the Hyprland loader and real Rofi; **QML behaviour and `hyprctl reload` not run on a real desktop by me**, see [docs/THEME.md](docs/THEME.md) |
 | Launcher tabs: Apps, Run, Prime, Walls | written and syntax/logic-checked in a sandbox; **not run on a real desktop by me**, see [docs/LAUNCHER.md](docs/LAUNCHER.md) |
 | Notifications, history, Do Not Disturb share one state | implemented (`NotificationStore.qml`) |
 | Quick settings act on real devices, hide what is missing | implemented; per-control behaviour in the table in section 1 |

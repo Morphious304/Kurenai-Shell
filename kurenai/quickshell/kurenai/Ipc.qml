@@ -19,6 +19,7 @@ import Quickshell.Io
 //   qs -c kurenai ipc call sysmon toggle|close
 //   qs -c kurenai ipc call shortcuts toggle|open|close|rescan|status   (keyboard shortcuts page)
 //   qs -c kurenai ipc call osd brightness            (shows the brightness OSD; see `kurenai-ctl media-binds`)
+//   qs -c kurenai ipc call theme toggle|sync|next     (wallpaper colours on/off, recolour now, next colour style)
 //   qs -c kurenai ipc call shell closeAll
 //   qs -c kurenai ipc show                            (lists every target and function)
 Scope {
@@ -93,6 +94,13 @@ Scope {
         target: "sysmon"
         function toggle(): void { UiState.toggleSysmon(); }
         function close(): void { UiState.sysmonOpen = false; }
+    }
+
+    IpcHandler {
+        target: "theme"
+        function toggle(): void { ThemeCtl.toggle(); }
+        function sync(): void { ThemeCtl.resync(); }
+        function next(): void { ThemeCtl.nextType(); }
     }
 
     IpcHandler {

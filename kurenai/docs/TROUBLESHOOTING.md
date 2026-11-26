@@ -81,3 +81,14 @@ Last resort, ends your session and loses unsaved work: `pkill -x Hyprland`.
 
 Send me: the output of `kurenai-ctl validate`, the first error line from `kurenai-ctl debug`, your Hyprland and Quickshell versions,
 and what you expected to happen. I can only reason from what you paste; I cannot see your machine.
+
+## Wallpaper colours
+
+| Symptom | Cause and fix |
+|---|---|
+| No "Wallpaper colours" tiles in Quick Settings | matugen is not on the shell's PATH: `sudo pacman -S matugen`, then `kurenai-ctl restart` |
+| Switched on, nothing changes | `kurenai-ctl theme status`; then `kurenai-ctl theme sync` prints the reason (usually awww-daemon not running, or a missing template: re-run `install.sh`) |
+| Colours are grey / dull | the wallpaper is low in colour. Try `kurenai-ctl theme type vibrant`, or `theme accent vermilion` |
+| Shell ignores the palette | the readability check refused it; `kurenai-ctl logs` shows "fails the contrast check". Try another scheme: `theme type next` |
+| Borders did not change | `theme hypr` may be off; Hyprland may not have repainted: `hyprctl reload` |
+| Want the original look back | `kurenai-ctl theme off` (or `theme reset`) |

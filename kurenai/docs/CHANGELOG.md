@@ -4,7 +4,14 @@
 
 Newest first. Only user-visible changes and fixes.
 
-## Launcher tabs + Rofi theme (this package)
+## Wallpaper colours (this package)
+- New, off by default: the shell, launcher, Quick Settings, lock screen (glow, password pill, petals), Rofi theme and Hyprland borders follow the wallpaper, using **matugen**. `kurenai-ctl theme on|off|status|type|contrast|accent|reset`, Quick Settings tiles, `qs -c kurenai ipc call theme ...`. See [THEME.md](THEME.md).
+- `Theme.qml` colours now come from `~/.local/share/kurenai/palette.json` when present, are checked for readability first, and fade between changes. Without the file nothing changes.
+- The lock screen's remaining fixed vermilion/charcoal values now use the theme.
+- `install.sh` adds the templates; `kurenai-ctl validate` has a "Wallpaper colours" section.
+- Changed: `Theme.qml` (+ lock copy), `LockView.qml`, `Pattern.qml`, `Walls.qml`, `QuickSettings.qml`, `Ipc.qml`, `shell.qml`, `qmldir`, `kurenai.lua`, `install.sh`, `kurenai-ctl`. New: `ThemeCtl.qml`, `matugen/`, `hypr/kurenai-colors.lua`, `docs/THEME.md`.
+
+## Launcher tabs + Rofi theme (previous package)
 - The launcher has four tabs: **Apps** (as before), **Run** (type a command), **Prime** (apps through `prime-run`) and **Walls** (wallpaper switcher with lazy thumbnails, `awww img -t random`).
   `Tab` / `Ctrl+1..4` switch; `SUPER + SHIFT + R / P / W` open on a tab; IPC `launcher openTab|toggleTab <tab>`.
 - New Rofi theme `rofi/kurenai.rasi`; the Rofi fallback uses it when installed. `kurenai-ctl rofi-theme` explains how to make it the default (it never edits your Rofi config).

@@ -21,13 +21,13 @@ fi
 
 mkdir -p "$BIN" "$CFG/quickshell" "$STATE"
 
-echo "1/5 Backing up current config..."
+echo "1/6 Backing up current config..."
 bash "$SRC/bin/kurenai-ctl" backup
 
 TS="$(date +%Y%m%d-%H%M%S)"
 REPLACED="$STATE/replaced-$TS"
 
-echo "2/5 Installing Hyprland modules (theme, binds, autostart, lock)..."
+echo "2/6 Installing Hyprland modules (theme, binds, autostart, lock)..."
 # kurenai.lua is KURENAI's own; binds/autostart may have been edited by you, so those are
 # only created if missing. If yours differs, the new version is saved as <file>.new to merge by hand.
 if [ -e "$CFG/hypr/kurenai.lua" ]; then mkdir -p "$REPLACED"; mv "$CFG/hypr/kurenai.lua" "$REPLACED/"; fi
@@ -49,7 +49,7 @@ for f in kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua; do
   fi
 done
 
-echo "3/5 Installing Quickshell configs (qs -c kurenai, qs -c kurenai-lock)..."
+echo "3/6 Installing Quickshell configs (qs -c kurenai, qs -c kurenai-lock)..."
 if [ -d "$CFG/quickshell/kurenai" ]; then
   mkdir -p "$REPLACED"; mv "$CFG/quickshell/kurenai" "$REPLACED/quickshell-kurenai"
 fi
@@ -64,7 +64,7 @@ cp -r "$SRC/quickshell/kurenai-lock" "$CFG/quickshell/kurenai-lock"
 cp "$CFG/quickshell/kurenai/Theme.qml" "$CFG/quickshell/kurenai-lock/Theme.qml"
 # if you had customised Config.qml of the lock before, it is in $REPLACED: re-apply your edits there
 
-echo "4/5 Installing kurenai-ctl and the lock supervisor to $BIN..."
+echo "4/6 Installing kurenai-ctl and the lock supervisor to $BIN..."
 install -m 0755 "$SRC/bin/kurenai-ctl" "$BIN/kurenai-ctl"
 install -m 0755 "$SRC/bin/kurenai-lock-supervisor" "$BIN/kurenai-lock-supervisor"
 install -m 0755 "$SRC/bin/kurenai-clip" "$BIN/kurenai-clip"          # clipboard-history engine
@@ -72,7 +72,7 @@ install -m 0755 "$SRC/bin/kurenai-sysmon" "$BIN/kurenai-sysmon"      # read-only
 mkdir -p "$STATE/clipboard/pins" && chmod 700 "$STATE/clipboard" "$STATE/clipboard/pins"   # pins/history metadata: private
 cp "$SRC/hypr/hypridle.kurenai.conf" "$CFG/hypr/hypridle.kurenai.conf"      # a sample only; see: kurenai-ctl lock-hypridle
 
-echo "5/5 Preparing launcher storage and the Rofi theme..."
+echo "5/6 Preparing launcher storage and the Rofi theme..."
 if [ ! -f "$STATE/launcher.json" ]; then
   printf '{\n  "favorites": [],\n  "recent": [],\n  "primeFavorites": [],\n  "primeRecent": []\n}\n' > "$STATE/launcher.json"
 fi
@@ -84,9 +84,28 @@ chmod 600 "$STATE/runhistory.json" 2>/dev/null || true
 # Rofi theme: a file of its own in ~/.config/rofi/themes. Your config.rasi is never touched.
 mkdir -p "$CFG/rofi/themes"
 if [ -e "$CFG/rofi/themes/kurenai.rasi" ] && ! cmp -s "$SRC/rofi/kurenai.rasi" "$CFG/rofi/themes/kurenai.rasi"; then
-  mkdir -p "$REPLACED"; mv "$CFG/rofi/themes/kurenai.rasi" "$REPLACED/rofi-kurenai.rasi"
+  # a file made by `kurenai-ctl theme` (wallpaper colours) is generated, not yours: no backup needed
+  if ! grep -q 'WALLPAPER VERSION' "$CFG/rofi/themes/kurenai.rasi"; then
+    mkdir -p "$REPLACED"; mv "$CFG/rofi/themes/kurenai.rasi" "$REPLACED/rofi-kurenai.rasi"
+  fi
 fi
 cp "$SRC/rofi/kurenai.rasi" "$CFG/rofi/themes/kurenai.rasi"
+
+echo "6/6 Preparing wallpaper colours (matugen templates; off until you switch it on)..."
+# templates: ours, replaced on every install. The palette file always exists (an empty one = built-in colours),
+# so the shell and the lock screen have something to watch from the first start.
+if [ -d "$STATE/matugen" ]; then mkdir -p "$REPLACED"; mv "$STATE/matugen" "$REPLACED/matugen-templates"; fi
+cp -r "$SRC/matugen" "$STATE/matugen"
+cp "$SRC/rofi/kurenai.rasi" "$STATE/matugen/kurenai.default.rasi"
+[ -f "$STATE/palette.json" ] || printf '{\n  "enabled": false\n}\n' > "$STATE/palette.json"
+[ -f "$CFG/hypr/kurenai-colors.lua" ] || cp "$SRC/hypr/kurenai-colors.lua" "$CFG/hypr/kurenai-colors.lua"
+THEME_ON=0; grep -qx 'enabled=1' "$STATE/theme.conf" 2>/dev/null && THEME_ON=1
+if [ "$THEME_ON" = 1 ]; then
+  # the files above were just reset to the defaults; recolour from the current wallpaper again
+  # (if this fails the built-in colours stay, nothing breaks)
+  { [ -s "$STATE/theme.source" ] && [ -r "$(cat "$STATE/theme.source")" ] && "$BIN/kurenai-ctl" theme-apply --auto "$(cat "$STATE/theme.source")"; } 2>/dev/null \
+    || "$BIN/kurenai-ctl" theme-sync --force --auto 2>/dev/null || echo "     (wallpaper colours are on but could not be re-applied now: kurenai-ctl theme sync)"
+fi
 
 echo
 echo "Installed. Nothing has been activated or started."
@@ -108,6 +127,10 @@ echo "    Keys (in kurenai-binds.lua): SUPER+SHIFT+R Run, SUPER+SHIFT+P Prime, S
 echo "    Prime needs prime-run (pacman -S nvidia-prime); Walls needs awww (and finds images under ~/Pictures/Wallpapers, subfolders included)."
 echo "  ROFI THEME (new): installed to $CFG/rofi/themes/kurenai.rasi. Try:  rofi -show drun -show-icons -theme kurenai"
 echo "    Make it Rofi's default:  $BIN/kurenai-ctl rofi-theme   (prints the one line to add; nothing edits your Rofi config)"
+echo
+echo "  WALLPAPER COLOURS (new, needs matugen: sudo pacman -S matugen): off until you turn it on."
+echo "    Quick Settings > Wallpaper colours, or:  $BIN/kurenai-ctl theme on     (then every wallpaper you set recolours the shell)"
+echo "    Back to the original colours:  $BIN/kurenai-ctl theme off     Overview: $BIN/kurenai-ctl theme status"
 echo
 echo "  SHORTCUTS PAGE: works right away from a terminal:  qs -c kurenai ipc call shortcuts toggle"
 if ! grep -q 'shortcuts toggle' "$CFG/hypr/kurenai-binds.lua" 2>/dev/null; then

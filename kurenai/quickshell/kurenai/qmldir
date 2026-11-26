@@ -14,6 +14,7 @@ singleton OsdState 1.0 OsdState.qml
 singleton Clipboard 1.0 Clipboard.qml
 singleton SysMon 1.0 SysMon.qml
 singleton Keybinds 1.0 Keybinds.qml
+singleton ThemeCtl 1.0 ThemeCtl.qml
 BarItem 1.0 BarItem.qml
 Divider 1.0 Divider.qml
 Emblem 1.0 Emblem.qml

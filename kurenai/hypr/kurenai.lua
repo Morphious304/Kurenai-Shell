@@ -15,11 +15,29 @@ end
 
 -- palette (Hyprland wants rgba(RRGGBBAA))
 local c = {
-  vermilion = "rgba(F04436ff)",
-  deep      = "rgba(B8281Eff)",
-  raised    = "rgba(3A3535ff)",
-  teal      = "rgba(70A6A0ff)",
+  vermilion  = "rgba(F04436ff)",
+  deep       = "rgba(B8281Eff)",
+  raised     = "rgba(3A3535ff)",
+  teal       = "rgba(70A6A0ff)",
+  background = 0xff242424,
 }
+
+-- Wallpaper colours: kurenai-colors.lua is written by `kurenai-ctl theme-apply` (empty = built-in colours above).
+-- A missing, broken or empty file simply leaves the defaults in place.
+try("wallpaper colours", function()
+  local conf = os.getenv("XDG_CONFIG_HOME")
+  if not conf or conf == "" then conf = (os.getenv("HOME") or "") .. "/.config" end
+  local f = loadfile(conf .. "/hypr/kurenai-colors.lua")
+  if not f then return end
+  local dyn = f()
+  if type(dyn) ~= "table" then return end
+  local function ok(v) return type(v) == "string" and v:match("^rgba%(%x%x%x%x%x%x%x%x%)$") ~= nil end
+  if dyn.pinAccent ~= true then
+    for _, k in ipairs({ "vermilion", "deep", "teal" }) do if ok(dyn[k]) then c[k] = dyn[k] end end
+  end
+  if ok(dyn.raised) then c.raised = dyn.raised end
+  if type(dyn.background) == "number" then c.background = dyn.background end
+end)
 
 -- 1. Borders, gaps, rounding, shadow, opacity ---------------------------------
 try("appearance", function()
@@ -55,7 +73,7 @@ end)
 try("misc", function()
   hl.config({
     misc = {
-      background_color      = 0xff242424,
+      background_color      = c.background,
       disable_hyprland_logo = true,
     },
   })

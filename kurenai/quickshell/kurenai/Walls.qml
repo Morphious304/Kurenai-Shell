@@ -184,6 +184,7 @@ Singleton {
             if (code === 0) {
                 root.status = "Wallpaper set";
                 root.statusIsError = false;
+                ThemeCtl.applyImage(root.applying);      // recolour the shell from it (only when Quick Settings > Wallpaper colours is on)
             } else {
                 const msg = String(applyErr.text || "").trim().split("\n")[0];
                 root.status = "awww could not set it" + (msg !== "" ? ": " + msg : " (is awww-daemon running?)");

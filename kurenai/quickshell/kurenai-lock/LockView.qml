@@ -25,18 +25,18 @@ Item {
     Rectangle {      // vignette
         anchors.fill: parent
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#26141414" }
-            GradientStop { position: 1.0; color: "#A6101010" }
+            GradientStop { position: 0.0; color: Theme.alpha(Qt.darker(Theme.bg, 1.8), 0.15) }
+            GradientStop { position: 1.0; color: Theme.alpha(Qt.darker(Theme.bg, 1.8), 0.65) }
         }
     }
     Rectangle {      // vermilion glow along the bottom; stronger after a wrong password
         id: glowRect
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
         height: parent.height * 0.45
-        property color glow: root.phase === "wrong" || root.phase === "cooldown" ? "#4DF04436" : "#24F04436"
+        property color glow: root.phase === "wrong" || root.phase === "cooldown" ? Theme.alpha(Theme.accent, 0.30) : Theme.alpha(Theme.accent, 0.14)
         Behavior on glow { ColorAnimation { duration: 260 } }
         gradient: Gradient {
-            GradientStop { position: 0.0; color: "#00F04436" }
+            GradientStop { position: 0.0; color: Theme.alpha(Theme.accent, 0) }
             GradientStop { position: 1.0; color: glowRect.glow }
         }
     }
@@ -115,7 +115,7 @@ Item {
                     width: 700 * root.u
                     height: 96 * root.u
                     radius: 24 * root.u
-                    color: "#F0262625"
+                    color: Theme.alpha(Theme.surface, 0.94)
                     border.width: Math.max(1, 2 * root.u)
                     border.color: root.phase === "wrong" || root.phase === "cooldown" ? Theme.accent
                                 : root.phase === "verifying" ? Theme.teal
@@ -207,7 +207,7 @@ Item {
         y: 120 * root.u
         width: 92 * root.u
         height: 636 * root.u
-        color: "#94141414"
+        color: Theme.alpha(Qt.darker(Theme.bg, 1.7), 0.58)
         border.width: Math.max(1, 2 * root.u)
         border.color: Theme.panelBorder
 

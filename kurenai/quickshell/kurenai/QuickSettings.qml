@@ -21,7 +21,7 @@ PanelOverlay {
     property string expandedSection: ""
     function toggleExpand(name) { expandedSection = expandedSection === name ? "" : name; }
     onOpenChanged: {
-        if (open) System.refreshBrightness();
+        if (open) { System.refreshBrightness(); ThemeCtl.refresh(); }
         else expandedSection = "";
     }
 
@@ -530,6 +530,62 @@ PanelOverlay {
                         checked: System.nightLight === "on"
                         onClicked: System.toggleNightLight()
                     }
+                }
+
+                // ---------------------------------------------------------------- wallpaper colours (needs matugen)
+                Row {
+                    id: themeTiles
+                    visible: ThemeCtl.available
+                    width: parent.width
+                    spacing: Theme.s2
+                    readonly property real tileW: (width - spacing * 2) / 3
+                    readonly property string styleName: {
+                        const t = ThemeCtl.type.replace(/-/g, " ");
+                        return t.charAt(0).toUpperCase() + t.slice(1);
+                    }
+
+                    Btn {
+                        width: themeTiles.tileW
+                        height: 64
+                        stacked: true
+                        icon: Theme.icons.image
+                        text: "Wallpaper colours"
+                        subtext: ThemeCtl.error !== "" ? "Failed, see below" : ThemeCtl.busy ? "Updating\u2026" : ThemeCtl.enabled ? "On" : "Off"
+                        checked: ThemeCtl.enabled
+                        onClicked: ThemeCtl.toggle()
+                    }
+                    Btn {
+                        width: themeTiles.tileW
+                        height: 64
+                        stacked: true
+                        icon: Theme.icons.cog
+                        text: "Colour style"
+                        enabled: ThemeCtl.enabled
+                        subtext: ThemeCtl.enabled ? themeTiles.styleName : "Turn colours on first"
+                        onClicked: ThemeCtl.nextType()
+                    }
+                    Btn {
+                        width: themeTiles.tileW
+                        height: 64
+                        stacked: true
+                        icon: Theme.icons.sun
+                        text: "Keep vermilion"
+                        enabled: ThemeCtl.enabled
+                        subtext: !ThemeCtl.enabled ? "Turn colours on first" : ThemeCtl.accent === "vermilion" ? "Accent fixed" : "Accent follows"
+                        checked: ThemeCtl.accent === "vermilion"
+                        onClicked: ThemeCtl.setAccent(ThemeCtl.accent === "vermilion" ? "wallpaper" : "vermilion")
+                    }
+                }
+
+                Text {      // the reason, when the last attempt failed
+                    visible: ThemeCtl.available && ThemeCtl.error !== ""
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    text: ThemeCtl.error
+                    textFormat: Text.PlainText
+                    font.family: Theme.fontUi
+                    font.pixelSize: Theme.fsSmall
+                    color: Theme.amber
                 }
 
                 // ---------------------------------------------------------------- shortcuts (installed tools only)
