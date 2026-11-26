@@ -25,6 +25,13 @@ Singleton {
             Hyprland.dispatch(`workspace ${rel}`);
     }
 
+    // End the Hyprland session. Same two ways your own SUPER+M bind uses: hyprshutdown (closes apps
+    // gracefully) if installed, otherwise Hyprland's exit dispatcher.
+    function logout() {
+        if (System.shutdownTool !== "") Quickshell.execDetached([System.shutdownTool]);
+        else Hyprland.dispatch(Hyprland.usingLua ? "hl.dsp.exit()" : "exit");
+    }
+
     // The screen that currently has focus, so transient panels appear where you are looking.
     // Falls back to the first screen while Hyprland has not reported a focused monitor.
     readonly property var focusedScreen: {

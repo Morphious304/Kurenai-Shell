@@ -20,6 +20,9 @@ HOOK_BINDS='local ok_b, err_b = pcall(require, "kurenai-binds"); if not ok_b the
 MARK_AUTO="KURENAI-AUTOSTART-HOOK"
 HOOK_AUTO='local ok_a, err_a = pcall(require, "kurenai-autostart"); if not ok_a then print("[kurenai] " .. tostring(err_a)) end -- KURENAI-AUTOSTART-HOOK'
 
+MARK_LOCK="KURENAI-LOCK-HOOK"
+HOOK_LOCK='local ok_l, err_l = pcall(require, "kurenai-lock"); if not ok_l then print("[kurenai] " .. tostring(err_l)) end -- KURENAI-LOCK-HOOK'
+
 NOTIFIERS="mako dunst swaync"
 
 die()   { printf 'kurenai-ctl: %s\n' "$*" >&2; exit 1; }
@@ -75,6 +78,21 @@ Usage: kurenai-ctl <command>
   restart            stop, then start
   logs               show the shell's log (qs log)
   debug              stop the running shell, then run it in the foreground with live logs (Ctrl+C quits)
+  media-binds        print (never apply) the brightness-key change for the OSD; only needed WITHOUT udevadm
+
+ Lock screen (separate process: kurenai-lock)
+  enable-lock        Hyprland side: restart-after-crash setting + start the lock process with the session
+  disable-lock       remove that hook
+  lock               lock the screen now
+  lock-status        is the locker running, is the screen locked
+  lock-preview       the lock screen in a normal window with the REAL password check; locks nothing
+  lock-start/-stop   start / stop the lock process (stop is refused while locked)
+  lock-recover       run from a TTY (Ctrl+Alt+F3) if the screen is stuck (grey / placeholder): restarts the locker
+  lock-diagnose      one compact report for troubleshooting (works from a TTY; no passwords)
+  lock-reset         the locker thinks the screen is locked but you are on your desktop: clean restart
+  lock-hypridle      show the hypridle settings that make it lock on idle / before sleep
+  lock-sync-theme    copy the main Theme.qml into the lock config after you edit the theme
+  lock-harden        print the steps for a root-owned PAM service (stronger than the default)
 
  Notifications (only one program may own org.freedesktop.Notifications)
   notif-status       who owns it right now, and where mako/dunst/swaync are started
@@ -164,6 +182,8 @@ cmd_stop() {
     echo "Could not stop the KURENAI shell (pid $(shell_pids all | tr '\n' ' ')). Try: kill <pid>" >&2
     return 1
   fi
+  # the brightness watcher (System.qml) is a child process; make sure none is left behind
+  pkill -f 'udevadm monitor --udev --subsystem-match=backlight' 2>/dev/null || true
   if [ "$was" -eq 1 ]; then echo "KURENAI shell stopped."; else echo "KURENAI shell was not running."; fi
   return 0
 }
@@ -336,20 +356,247 @@ cmd_binds_check() {
   [ "$clashes" -eq 0 ]
 }
 
+# ------------------------------------------------------------------ OSD for brightness keys
+# Volume, microphone and media-key OSDs need nothing: the shell watches PipeWire/MPRIS itself.
+# Brightness has no event to watch, so the key bind has to tell the shell. This only PRINTS the change.
+cmd_media_binds() {
+  local f="$HYPR_DIR/hyprland.lua"
+  [ -f "$f" ] || die "$f not found"
+  local ipc='qs -c kurenai ipc call osd brightness'
+  local lines; lines="$(grep 'XF86MonBrightness' "$f" | grep -v '^[[:space:]]*--')"
+  if [ -z "$lines" ]; then
+    echo "No XF86MonBrightness binds found in $f. Add '&& $ipc' after your brightness command."
+    return 0
+  fi
+  echo "Brightness OSD: append the IPC call to your brightness binds. Nothing has been edited."
+  echo "In $f replace:"
+  echo
+  local line new
+  while IFS= read -r line; do
+    if printf '%s' "$line" | grep -qF 'osd brightness'; then printf '  (already has the OSD call)  %s\n' "$(printf '%s' "$line" | sed 's/^[[:space:]]*//')"; continue; fi
+    new="$(printf '%s' "$line" | sed -E 's/(exec_cmd\("[^"]*)"\)/\1 \&\& '"$ipc"'")/')"
+    printf '  - %s\n  + %s\n\n' "$(printf '%s' "$line" | sed 's/^[[:space:]]*//')" "$(printf '%s' "$new" | sed 's/^[[:space:]]*//')"
+  done <<< "$lines"
+  echo "Then: hyprctl reload"
+  echo "(The && makes the OSD appear only after brightnessctl has finished, so it shows the new value.)"
+}
+
+# ------------------------------------------------------------------ lock screen (kurenai-lock)
+LOCK_PAT='(^|/)(qs|quickshell)( .*)? -c kurenai-lock( |$)'
+LOCK_LOG_RULES='qt.qpa.wayland.textinput.warning=false'
+# the supervisor always runs as "bash <path>/kurenai-lock-supervisor": match exactly that, so an editor or
+# `tail` that merely has the name in its arguments is never mistaken for it (or killed)
+SUP_PAT='(^|/)bash [^ ]*kurenai-lock-supervisor$'
+lock_pids() { pgrep -f "$LOCK_PAT" 2>/dev/null; }
+lock_running() { [ -n "$(lock_pids)" ]; }
+supervisor_running() { pgrep -f "$SUP_PAT" >/dev/null 2>&1; }
+lock_ipc() { qs -c kurenai-lock ipc call lock "$1" 2>/dev/null; }
+lock_state() { lock_running && lock_ipc status || true; }
+supervisor_path() {
+  local here; here="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
+  if [ -x "$here/kurenai-lock-supervisor" ]; then printf '%s' "$here/kurenai-lock-supervisor"
+  else printf '%s' "$HOME/.local/bin/kurenai-lock-supervisor"; fi
+}
+
+cmd_enable_lock()  { hook_add    "lock" "$MARK_LOCK" "$HOOK_LOCK" "kurenai-lock.lua"; }
+cmd_disable_lock() { hook_remove "lock" "$MARK_LOCK"; }
+
+cmd_lock() {
+  have qs || die "qs not found"
+  lock_running || die "the lock process is not running (kurenai-ctl lock-start)"
+  lock_ipc lock
+}
+
+cmd_lock_status() {
+  if lock_running; then echo "locker: running (pid $(lock_pids | tr '\n' ' '))"; else echo "locker: NOT running"; fi
+  if supervisor_running; then echo "supervisor: running"; else echo "supervisor: not running"; fi
+  local st; st="$(lock_state)"; echo "screen: ${st:-unknown}"
+  if [ "$st" = "locked" ] && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    echo "  !! you are typing in your graphical session, so the screen is NOT locked: the locker's state is stale."
+    echo "     Fix it with: kurenai-ctl lock-reset"
+  fi
+  [ -e "${XDG_RUNTIME_DIR:-/tmp}/kurenai-lock.active" ] && echo "re-lock flag: present (a restarted locker would lock again at once)"
+  return 0
+}
+
+cmd_lock_preview() {
+  have qs || die "qs not found"
+  local f="$QS_DIR/kurenai-lock/preview.qml"
+  [ -f "$f" ] || die "kurenai-lock is not installed; run install.sh"
+  echo "Preview: a normal window with the real lock screen. NOTHING is locked."
+  echo "Type your password and press Enter: it uses the real PAM check, then the window closes. Ctrl+C to abort."
+  qs -p "$f" --log-rules "$LOCK_LOG_RULES"
+}
+
+cmd_lock_start() {
+  have qs || die "qs not found"
+  [ -f "$QS_DIR/kurenai-lock/shell.qml" ] || die "kurenai-lock is not installed; run install.sh"
+  [ -n "${WAYLAND_DISPLAY:-}" ] || die "run lock-start in a terminal INSIDE your Hyprland session (from a TTY the locker has no display); from a TTY use: kurenai-ctl lock-recover"
+  if lock_running; then echo "lock process is already running."; return 0; fi
+  setsid "$(supervisor_path)" >/dev/null 2>&1 < /dev/null &
+  sleep 2
+  if lock_running; then echo "lock process started."; else echo "it did not start. Look at: qs log -c kurenai-lock   or run: qs -c kurenai-lock"; fi
+}
+
+cmd_lock_stop() {
+  local st; st="$(lock_state)"
+  if [ "$st" = "locked" ]; then
+    [ -n "${WAYLAND_DISPLAY:-}" ] && echo "(If you can read this in your normal desktop, the screen is NOT locked and the locker's state is stale: use kurenai-ctl lock-reset.)" >&2
+    die "the locker says the screen is locked right now; refusing to stop it."
+  fi
+  pkill -f "$SUP_PAT" 2>/dev/null                    # first, so it does not restart the locker
+  have qs && qs kill -c kurenai-lock >/dev/null 2>&1
+  sleep 0.5
+  lock_running && pkill -f "$LOCK_PAT" 2>/dev/null
+  sleep 0.5
+  if lock_running; then echo "could not stop it."; else echo "lock process stopped."; fi
+}
+
+# For when the screen is stuck (a grey screen, or Hyprland's placeholder): log in on a text console (Ctrl+Alt+F3),
+# run this, then go back (Ctrl+Alt+F1 or F2) and unlock with your password.
+#  * a locker that is alive but shows nothing is killed on purpose: the supervisor restarts it and it re-locks
+#    (SIGKILL counts as a crash for the supervisor, so it comes back within a second)
+#  * if there is no supervisor, one is started inside your Hyprland session
+cmd_lock_recover() {
+  have hyprctl || die "hyprctl not found"
+  if lock_running; then
+    echo "Killing the current locker so a fresh one re-locks the screen with a working lock UI..."
+    pkill -KILL -f "$LOCK_PAT" 2>/dev/null
+    sleep 2
+  fi
+  if supervisor_running; then
+    echo "The supervisor is running: it restarts the locker by itself."
+  else
+    local sup out; sup="$(supervisor_path)"
+    echo "No supervisor: starting one inside your Hyprland session..."
+    out="$(hyprctl --instance 0 dispatch "hl.dsp.exec_cmd(\"$sup\")" 2>&1)"
+    echo "  hyprctl (Lua form): $out"
+    case "$out" in *ok*|*OK*) ;; *)
+      out="$(hyprctl --instance 0 dispatch exec "$sup" 2>&1)"
+      echo "  hyprctl (classic form): $out" ;;
+    esac
+    sleep 3
+  fi
+  echo "locker: $(lock_running && echo running || echo "NOT running")"
+  echo "Switch back (Ctrl+Alt+F1 or F2): you should see the lock screen. Type your password."
+  echo "Then send me:  kurenai-ctl lock-diagnose"
+  echo "Last resort (ends the session, loses unsaved work):  pkill -x Hyprland"
+}
+
+# A compact report for troubleshooting. Works from a TTY. Contains no passwords and no notification text.
+cmd_lock_diagnose() {
+  local run="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  echo "== KURENAI lock diagnostics  $(date '+%F %T')"
+  echo "-- processes"
+  { pgrep -a -x hypridle; pgrep -a -f "$LOCK_PAT"; pgrep -a -f "$SUP_PAT"; } 2>/dev/null | sed 's/^/  /'
+  lock_running || echo "  (locker NOT running)"
+  supervisor_running || echo "  (supervisor NOT running)"
+  pgrep -x hypridle >/dev/null || echo "  (hypridle NOT running)"
+  echo "-- what hypridle's lock_cmd inherits (a lock_cmd without WAYLAND_DISPLAY cannot reach the locker)"
+  local pid
+  for pid in $(pgrep -x hypridle 2>/dev/null); do
+    tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -E '^(WAYLAND_DISPLAY|XDG_RUNTIME_DIR|HYPRLAND_INSTANCE_SIGNATURE)=' | sed "s/^/  [pid $pid] /"
+    tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qE '^WAYLAND_DISPLAY=' || echo "  [pid $pid] WAYLAND_DISPLAY is NOT set in hypridle's environment"
+  done
+  echo "-- hypridle.conf, lock-related lines"
+  grep -nE 'lock_cmd|unlock_cmd|before_sleep_cmd|after_sleep_cmd|on-timeout|on-resume|timeout|ignore_' "$HYPR_DIR/hypridle.conf" 2>/dev/null | sed 's/^/  /' || echo "  (no $HYPR_DIR/hypridle.conf)"
+  echo "-- logind sessions"
+  local sid
+  for sid in $(loginctl list-sessions --no-legend 2>/dev/null | awk -v u="$(id -un)" '$3 == u {print $1}'); do
+    loginctl show-session "$sid" -p Id -p Type -p Class -p Active -p State -p LockedHint -p IdleHint 2>/dev/null | tr '\n' ' ' | sed 's/^/  /'; echo
+  done
+  echo "-- flag and log files"
+  ls -l "$run/kurenai-lock.active" 2>&1 | sed 's/^/  /'
+  echo "-- IPC (only possible from inside the graphical session)"
+  if [ -n "${WAYLAND_DISPLAY:-}" ]; then echo "  screen: $(lock_state)"; else echo "  skipped (no WAYLAND_DISPLAY: you are on a TTY)"; fi
+  echo "-- locker log: the last 70 lines of $run/kurenai-lock.log"
+  tail -n 70 "$run/kurenai-lock.log" 2>/dev/null | sed 's/^/  /' || true
+  [ -f "$run/kurenai-lock.log" ] || echo "  (no log yet: it is written by the supervisor, so start the locker with kurenai-ctl lock-start)"
+}
+
+# The locker believes the screen is locked although you are using the desktop (state left over from an unlock
+# by an older version). Only meaningful from INSIDE the graphical session: if you can run a command there, the
+# screen is not locked. Removes the re-lock flag and restarts the locker with a clean state.
+cmd_lock_reset() {
+  [ -n "${WAYLAND_DISPLAY:-}" ] || die "run this in a terminal INSIDE your graphical session (if you can type there, the screen is not locked)"
+  lock_running || die "the lock process is not running (kurenai-ctl lock-start)"
+  echo "Resetting the locker: removing the re-lock flag and restarting it with a clean state..."
+  rm -f "${XDG_RUNTIME_DIR:-/tmp}/kurenai-lock.active"
+  pkill -KILL -f "$LOCK_PAT" 2>/dev/null
+  sleep 2
+  if supervisor_running; then sleep 1; else cmd_lock_start; fi
+  cmd_lock_status
+}
+
+cmd_lock_hypridle() {
+  local conf="$HYPR_DIR/hypridle.conf" sample="$HYPR_DIR/hypridle.kurenai.conf"
+  have hypridle && echo "hypridle: installed" || echo "hypridle: NOT installed (sudo pacman -S hypridle)"
+  echo
+  if [ -f "$conf" ]; then
+    echo "Your $conf currently has:"
+    grep -nE 'lock_cmd|before_sleep_cmd|after_sleep_cmd|timeout|on-timeout' "$conf" | sed 's/^/  /'
+    echo
+    grep -q 'kurenai-lock' "$conf" && echo "=> it already calls the KURENAI locker." \
+      || echo "=> it does NOT call the KURENAI locker yet (e.g. it may call hyprlock). Merge the sample below."
+  else
+    echo "No $conf yet: copy the sample below to that path."
+  fi
+  echo
+  echo "---- sample ($sample) ----"
+  [ -f "$sample" ] && cat "$sample" || echo "(sample not installed; run install.sh)"
+  echo "----"
+  echo "After editing: restart hypridle (e.g. pkill hypridle; hypridle &  or your usual way)."
+  echo "Test: run  loginctl lock-session  and the screen should lock."
+}
+
+cmd_lock_sync_theme() {
+  local a="$QS_DIR/kurenai/Theme.qml" b="$QS_DIR/kurenai-lock/Theme.qml"
+  [ -f "$a" ] && [ -d "$QS_DIR/kurenai-lock" ] || die "both configs must be installed"
+  cp "$a" "$b" && echo "Theme copied into the lock config."
+  echo "The running locker keeps the old look until restarted: kurenai-ctl lock-stop && kurenai-ctl lock-start"
+}
+
+cmd_lock_harden() {
+  cat <<'HARDEN'
+By default the lock checks your password with a small PAM file inside ~/.config/quickshell/kurenai-lock/pam/.
+Any program running as YOU could edit that file (to accept any password) while you are away. A root-owned
+PAM service closes that gap. It needs sudo ONCE; nothing here is run for you:
+
+  printf 'auth required pam_unix.so\n'    | sudo tee /etc/pam.d/kurenai-lock
+  printf 'auth required pam_fprintd.so\n'  | sudo tee /etc/pam.d/kurenai-lock-fp
+  sudo chown root:root /etc/pam.d/kurenai-lock /etc/pam.d/kurenai-lock-fp
+  sudo chmod 644 /etc/pam.d/kurenai-lock /etc/pam.d/kurenai-lock-fp
+
+Then, in ~/.config/quickshell/kurenai-lock/Config.qml, set:
+
+  pamDirectory:   "/etc/pam.d"
+  pamPassword:    "kurenai-lock"
+  pamFingerprint: "kurenai-lock-fp"
+
+and restart the locker (kurenai-ctl lock-stop && kurenai-ctl lock-start).
+ALWAYS check it with  kurenai-ctl lock-preview  before relying on it. To go back, set the three values
+to "", "password.conf" and "fingerprint.conf".
+HARDEN
+}
+
 # ------------------------------------------------------------------ rollback / restore
 move_aside() {
   local dest="$STATE/removed-$(stamp)"
   mkdir -p "$dest"
   local f
-  for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua; do
+  for f in kurenai.lua kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua; do
     [ -e "$HYPR_DIR/$f" ] && mv "$HYPR_DIR/$f" "$dest/"
   done
   [ -d "$QS_DIR/kurenai" ] && mv "$QS_DIR/kurenai" "$dest/quickshell-kurenai"
+  [ -d "$QS_DIR/kurenai-lock" ] && mv "$QS_DIR/kurenai-lock" "$dest/quickshell-kurenai-lock"
   echo "KURENAI files moved to $dest (nothing deleted)"
   return 0
 }
 
 cmd_rollback() {
+  [ "$(lock_state)" = "locked" ] && die "the screen is locked right now; unlock it first."
+  cmd_lock_stop
+  cmd_disable_lock
   cmd_notif_restore
   cmd_disable_autostart
   cmd_disable_binds
@@ -363,6 +610,8 @@ cmd_rollback() {
 cmd_restore() {
   local src="$BACKUPS/latest"
   [ -d "$src/hypr" ] || die "no backup at $src (nothing to restore)"
+  [ "$(lock_state)" = "locked" ] && die "the screen is locked right now; unlock it first."
+  cmd_lock_stop
   cmd_notif_restore
   move_aside
   cp -a "$HYPR_DIR/hyprland.lua" "$HYPR_DIR/hyprland.lua.pre-restore-$(stamp)" 2>/dev/null
@@ -462,6 +711,85 @@ cmd_validate() {
     have "$t" && ok "optional: $t" || printf '  [ -- ] optional, not installed: %s\n' "$t"
   done
 
+  echo "Phase 4 extras (media, OSD, power menu)"
+  have playerctl && ok "playerctl installed (your XF86Audio media keys use it)" || warn "playerctl missing: media keybinds that call it do nothing"
+  local lk=""; for t in hyprlock swaylock gtklock waylock; do have "$t" && { lk="$t"; break; }; done
+  if [ -f "$QS_DIR/kurenai-lock/shell.qml" ]; then
+    ok "KURENAI lock screen installed: the power menu's Lock entry uses it while its process runs (see the Lock screen section)"
+  elif [ -n "$lk" ]; then
+    ok "lock screen: $lk (Lock entry in the power menu)"
+  else
+    warn "no lock screen installed: the power menu has no Lock entry (run install.sh for the KURENAI lock, or install hyprlock)"
+  fi
+  have hyprshutdown && ok "hyprshutdown (graceful log out)" || printf '  [ -- ] optional, not installed: hyprshutdown (log out uses Hyprland exit instead)\n'
+  local bline ke kn ce cn
+  bline="$(grep -h 'XF86MonBrightnessUp' "$HYPR_DIR/hyprland.lua" 2>/dev/null | grep -v '^[[:space:]]*--' | head -1)"
+  if [ -n "$bline" ]; then
+    ke="$(printf '%s' "$bline" | grep -oE -- '-e[0-9]+' | head -1 | cut -c3-)"
+    kn="$(printf '%s' "$bline" | grep -oE -- '-n[0-9]+' | head -1 | cut -c3-)"
+    ce="$(grep -oE 'brightnessExponent: *[0-9]+' "$QS_DIR/kurenai/Config.qml" 2>/dev/null | grep -oE '[0-9]+$')"
+    cn="$(grep -oE 'brightnessMin: *[0-9]+' "$QS_DIR/kurenai/Config.qml" 2>/dev/null | grep -oE '[0-9]+$')"
+    if [ "${ke:-0}" = "${ce:-0}" ] && [ "${kn:-0}" = "${cn:-0}" ]; then ok "brightness curve: keys and shell agree (-e${ke:-0} -n${kn:-0})"
+    else warn "brightness keys use -e${ke:-0} -n${kn:-0} but Config.qml has -e${ce:-?} -n${cn:-?}: slider/OSD will disagree with the keys"; fi
+    if have udevadm; then ok "udevadm present: brightness changes (Fn keys, brightnessctl) update the slider and OSD live"
+    elif printf '%s' "$bline" | grep -qF 'osd brightness'; then ok "no udevadm, but your brightness keys call the OSD (slider updates only while the panel is open)"
+    else warn "no udevadm: slider updates only while the panel is open and the brightness OSD needs the key change (kurenai-ctl media-binds)"; fi
+  fi
+  local nbl; nbl="$(ls /sys/class/backlight 2>/dev/null | wc -l)"
+  if [ "$nbl" -gt 1 ]; then
+    warn "$nbl backlight devices ($(ls /sys/class/backlight | tr '\n' ' ')): make sure the shell and your keys use the same one; pin it with Config.brightnessDevice"
+  fi
+  local pb; pb="$(grep -n -E 'exec_cmd\("(poweroff|reboot)"\)' "$HYPR_DIR/hyprland.lua" 2>/dev/null | grep -v '^[0-9]*:[[:space:]]*--')"
+  if [ -n "$pb" ]; then
+    printf '  [ -- ] note: these keybinds power off / reboot with no confirmation (the KURENAI power menu asks first):\n'
+    printf '%s\n' "$pb" | sed 's/^/           /'
+  fi
+
+  echo "Lock screen (kurenai-lock)"
+  if [ -f "$QS_DIR/kurenai-lock/shell.qml" ]; then
+    ok "kurenai-lock installed"
+    local pwf="$QS_DIR/kurenai-lock/pam/password.conf"
+    grep -q '^auth' "$pwf" 2>/dev/null && ok "PAM password file present" || warn "PAM password file missing/empty: the locker refuses to lock without it"
+    [ -e /usr/lib/security/pam_unix.so ] || [ -e /lib/security/pam_unix.so ] && ok "pam_unix module present" || warn "pam_unix.so not found where expected"
+    cmp -s "$QS_DIR/kurenai/Theme.qml" "$QS_DIR/kurenai-lock/Theme.qml" && ok "lock theme matches the main theme" \
+      || warn "lock theme differs from the main Theme.qml (kurenai-ctl lock-sync-theme)"
+    if [ -f "$HYPR_DIR/hyprland.lua" ] && hook_active "$HYPR_DIR/hyprland.lua" "$MARK_LOCK"; then ok "lock hook active (restart-after-crash + autostart)"
+    else warn "lock hook not active: the locker will not start with the session (kurenai-ctl enable-lock)"; fi
+    grep -qs 'allow_session_lock_restore *= *true' "$HYPR_DIR/kurenai-lock.lua" "$HYPR_DIR/hyprland.lua" \
+      && ok "allow_session_lock_restore is set (a crashed locker can be replaced)" \
+      || warn "allow_session_lock_restore not set: after a locker crash the screen stays on Hyprland's placeholder until you restart it"
+    lock_running && ok "locker running (pid $(lock_pids | head -1))" || warn "locker not running (kurenai-ctl lock-start)"
+    supervisor_running && ok "supervisor running (restarts the locker after a crash)" || warn "supervisor not running"
+    if lock_running; then
+      case "$(lock_state)" in
+        unlocked) ok "IPC answers: screen unlocked" ;;
+        locked)
+          if [ -n "${WAYLAND_DISPLAY:-}" ]; then warn "the locker believes the screen is locked, but you are using the desktop: stale state (kurenai-ctl lock-reset)"
+          else ok "screen is currently LOCKED"; fi ;;
+        *)        warn "locker running but IPC gives no answer" ;;
+      esac
+    fi
+    if [ -e "${XDG_RUNTIME_DIR:-/tmp}/kurenai-lock.active" ] && [ "$(lock_state)" = "unlocked" ]; then
+      warn "stale re-lock flag (${XDG_RUNTIME_DIR:-/tmp}/kurenai-lock.active): a restarted locker would lock at once; remove it if unintended"
+    fi
+    if have awww; then
+      local wp; wp="$(awww query -j 2>/dev/null | grep -o '"image": *"[^"]*"' | head -1)"
+      [ -n "$wp" ] && ok "awww reports a wallpaper ($wp)" || warn "awww installed but reports no image (the lock falls back to a generated pattern)"
+    else warn "awww not found: the lock uses Config.wallpaper or a generated pattern"; fi
+    if have fprintd-list; then
+      local fp; fp="$(fprintd-list "$(id -un)" 2>&1)"
+      if printf '%s' "$fp" | grep -qi 'finger'; then ok "fingerprint: $(printf '%s' "$fp" | grep -ci 'finger') line(s) from fprintd-list (enrolled fingers shown there)"
+      else warn "fprintd installed but no enrolled finger found (fprintd-enroll)"; fi
+      [ -e /usr/lib/security/pam_fprintd.so ] && ok "pam_fprintd module present" || warn "pam_fprintd.so missing (fingerprint will be skipped)"
+    else warn "fprintd not installed: fingerprint unlock unavailable (sudo pacman -S fprintd)"; fi
+    if have hypridle; then
+      local hi="$HYPR_DIR/hypridle.conf"
+      grep -qs 'kurenai-lock' "$hi" && ok "hypridle calls the KURENAI locker" || warn "hypridle does not call the KURENAI locker yet (kurenai-ctl lock-hypridle)"
+    else warn "hypridle not installed: no lock on idle / before sleep"; fi
+  else
+    warn "kurenai-lock not installed (run install.sh)"
+  fi
+
   echo "Launcher fallback"
   have rofi && ok "rofi installed: $(command -v rofi)" || warn "rofi not found: the launcher fallback will not work"
   [ -f "$STATE/launcher.json" ] && ok "launcher.json present" || warn "launcher.json missing (the installer creates it)"
@@ -500,6 +828,20 @@ case "${1:-}" in
   restart)           cmd_restart ;;
   logs)              cmd_logs ;;
   debug)             cmd_debug ;;
+  media-binds)       cmd_media_binds ;;
+  enable-lock)       cmd_enable_lock ;;
+  disable-lock)      cmd_disable_lock ;;
+  lock)              cmd_lock ;;
+  lock-status)       cmd_lock_status ;;
+  lock-preview)      cmd_lock_preview ;;
+  lock-start)        cmd_lock_start ;;
+  lock-stop)         cmd_lock_stop ;;
+  lock-recover)      cmd_lock_recover ;;
+  lock-diagnose)     cmd_lock_diagnose ;;
+  lock-reset)        cmd_lock_reset ;;
+  lock-hypridle)     cmd_lock_hypridle ;;
+  lock-sync-theme)   cmd_lock_sync_theme ;;
+  lock-harden)       cmd_lock_harden ;;
   notif-status)      cmd_notif_status ;;
   notif-takeover)    cmd_notif_takeover ;;
   notif-restore)     cmd_notif_restore ;;

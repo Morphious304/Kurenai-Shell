@@ -98,6 +98,15 @@ Singleton {
     }
     function toggleDnd() { dnd = !dnd; }
 
+    // The lock screen is a separate process and cannot see this state. It gets a bare NUMBER through a file in
+    // $XDG_RUNTIME_DIR (private to you, gone at logout): no titles, no text, no app names.
+    onCountChanged: publishTimer.restart()
+    Timer {
+        id: publishTimer
+        interval: 300
+        onTriggered: Quickshell.execDetached(["sh", "-c", 'printf %s "$1" > "$XDG_RUNTIME_DIR/kurenai-notifications"', "sh", String(root.count)])
+    }
+
     // ---- server ------------------------------------------------------------
     NotificationServer {
         id: server

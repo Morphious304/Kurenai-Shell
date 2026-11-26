@@ -21,11 +21,39 @@ Singleton {
     // Brightness uses `brightnessctl` (class "backlight"). Leave empty for the first backlight device;
     // set a name from `brightnessctl -l` to pin one (useful on hybrid-GPU laptops with two).
     readonly property string brightnessDevice: ""
+    // Brightness curve. MUST match your brightness keybinds, otherwise the slider/OSD and the keys
+    // disagree about "50%". Your hyprland.lua uses `brightnessctl -e4 -n2`, so: 4 and 2.
+    // (0 = plain linear percent, no -e/-n flags.)
+    readonly property int brightnessExponent: 4
+    readonly property int brightnessMin: 2
     readonly property int nightLightTemp: 4000          // Kelvin, used with hyprsunset
     // Optional settings apps; the first one that is installed is used, none installed = no shortcut shown.
     readonly property var audioTools: ["pwvucontrol", "pavucontrol"]
     readonly property var networkTools: ["nm-connection-editor"]
     readonly property var bluetoothTools: ["blueman-manager", "overskride"]
+
+    // ---- popovers (media, calendar, power menu) -----------------------------------
+    readonly property bool popoverDocked: true          // hang from the bar; floats over a fullscreen window
+
+    // ---- media --------------------------------------------------------------
+    readonly property int mediaBarChars: 28             // "Title - Artist" is cut to this many characters in the bar
+
+    // ---- calendar -----------------------------------------------------------
+    readonly property int firstDayOfWeek: -1            // -1 = your locale; 0 = Sunday, 1 = Monday, ...
+
+    // ---- power menu ------------------------------------------------------------
+    // First installed one is used for "Lock". None installed = no Lock entry (never assumed).
+    readonly property var lockTools: ["hyprlock", "swaylock", "gtklock", "waylock"]   // fallback only
+    // With the KURENAI lock screen running (kurenai-lock), "Lock" uses it, and "Suspend" locks first.
+    readonly property bool lockBeforeSuspend: true
+
+    // ---- on-screen display ---------------------------------------------------------
+    readonly property int osdTimeout: 1400              // ms
+    readonly property bool osdVolume: true
+    readonly property bool osdMic: true
+    readonly property bool osdBrightness: true          // needs the one-line bind change, see `kurenai-ctl media-binds`
+    readonly property bool osdMediaPlayPause: true
+    readonly property bool osdMediaTrack: true          // shows on every track change, incl. automatic ones
 
     // ---- notifications -----------------------------------------------------
     readonly property int maxPopups: 4

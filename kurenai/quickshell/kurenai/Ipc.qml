@@ -10,6 +10,10 @@ import Quickshell.Io
 //   qs -c kurenai ipc call notifications dnd          (toggle Do Not Disturb)
 //   qs -c kurenai ipc call notifications clear
 //   qs -c kurenai ipc call quicksettings toggle
+//   qs -c kurenai ipc call media toggle|playpause|next|previous
+//   qs -c kurenai ipc call calendar toggle
+//   qs -c kurenai ipc call powermenu toggle
+//   qs -c kurenai ipc call osd brightness            (shows the brightness OSD; see `kurenai-ctl media-binds`)
 //   qs -c kurenai ipc call shell closeAll
 //   qs -c kurenai ipc show                            (lists every target and function)
 Scope {
@@ -34,6 +38,31 @@ Scope {
         function toggle(): void { UiState.toggleQuickSettings(); }
         function open(): void { UiState.closeAll(); UiState.quickSettingsOpen = true; }
         function close(): void { UiState.quickSettingsOpen = false; }
+    }
+
+    IpcHandler {
+        target: "media"
+        function toggle(): void { UiState.toggleMedia(); }
+        function playpause(): void { Media.togglePlaying(); }
+        function next(): void { Media.next(); }
+        function previous(): void { Media.previous(); }
+    }
+
+    IpcHandler {
+        target: "calendar"
+        function toggle(): void { UiState.toggleCalendar(); }
+        function close(): void { UiState.calendarOpen = false; }
+    }
+
+    IpcHandler {
+        target: "powermenu"
+        function toggle(): void { UiState.togglePowerMenu(); }
+        function close(): void { UiState.powerMenuOpen = false; }
+    }
+
+    IpcHandler {
+        target: "osd"
+        function brightness(): void { OsdState.requestBrightness(); }
     }
 
     IpcHandler {

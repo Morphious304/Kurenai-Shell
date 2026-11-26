@@ -66,6 +66,19 @@ PanelWindow {
         anchors { right: parent.right; rightMargin: Theme.s3; verticalCenter: parent.verticalCenter }
         spacing: Theme.s2
 
+        // current track; only exists while an MPRIS player is running
+        BarItem {
+            id: mediaItem
+            visible: Media.has
+            icon: Media.playing ? Theme.icons.music : Theme.icons.pause
+            iconColor: Media.playing ? Theme.rose : Theme.muted
+            label: bar.wide ? Media.barText() : ""
+            labelColor: Media.playing ? Theme.text : Theme.muted
+            active: UiState.mediaOpen
+            onClicked: m => m.button === Qt.MiddleButton ? Media.togglePlaying() : UiState.toggleMedia()
+        }
+        Divider { visible: mediaItem.visible }
+
         Tray {
             id: tray
             visible: any

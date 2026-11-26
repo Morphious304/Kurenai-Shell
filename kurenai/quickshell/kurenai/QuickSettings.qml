@@ -166,11 +166,22 @@ PanelOverlay {
                         color: Theme.text
                     }
                     Text {
-                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                        anchors { right: powerBtn.left; rightMargin: Theme.s2; verticalCenter: parent.verticalCenter }
                         text: "Esc to close"
                         font.family: Theme.fontMono
                         font.pixelSize: Theme.fsSmall - 1
                         color: Theme.muted
+                    }
+                    Btn {
+                        id: powerBtn
+                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                        width: 28
+                        height: 24
+                        flat: true
+                        center: true
+                        icon: Theme.icons.power
+                        iconSize: 12
+                        onClicked: UiState.togglePowerMenu()      // opens the menu; nothing runs until you confirm there
                     }
                 }
 
@@ -477,7 +488,8 @@ PanelOverlay {
 
                     Btn {
                         width: tiles.tileW
-                        height: 52
+                        height: 64
+                        stacked: true
                         icon: NotificationStore.dnd ? Theme.icons.bellOff : Theme.icons.bell
                         text: "Do not disturb"
                         subtext: NotificationStore.dnd ? "On" : "Off"
@@ -486,7 +498,8 @@ PanelOverlay {
                     }
                     Btn {
                         width: tiles.tileW
-                        height: 52
+                        height: 64
+                        stacked: true
                         icon: Theme.icons.coffee
                         text: "Keep awake"
                         subtext: System.idleInhibit ? "Screen stays on" : "Off"
@@ -496,7 +509,8 @@ PanelOverlay {
                     Btn {
                         visible: tiles.nightShown
                         width: tiles.tileW
-                        height: 52
+                        height: 64
+                        stacked: true
                         icon: Theme.icons.moon
                         text: "Night light"
                         enabled: System.nightLight !== "external"

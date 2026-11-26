@@ -104,6 +104,18 @@ Singleton {
         chevUp:   "\uf077",
         check:    "\uf00c",
         cog:      "\uf013",
-        headphones:"\uf025"
+        headphones:"\uf025",
+        play:     "\uf04b",
+        pause:    "\uf04c",
+        prev:     "\uf048",
+        next:     "\uf051",
+        music:    "\uf001",
+        calendar: "\uf073",
+        power:    "\uf011",
+        signout:  "\uf08b",
+        reboot:   "\uf021",
+        bed:      "\uf236",
+        chevL:    "\uf053",
+        chevR:    "\uf054"
     })
 }

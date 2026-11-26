@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# kurenai-lock-supervisor: keeps the KURENAI lock process (qs -c kurenai-lock) running.
+#
+# Why a loop instead of a systemd user service: it inherits the Wayland environment of your Hyprland
+# session, which user services often do not have.
+#
+# If the locker crashes, the compositor keeps the screen locked and this restarts the locker within a
+# second; the restarted locker sees the `kurenai-lock.active` flag and re-locks at once
+# (Hyprland needs misc.allow_session_lock_restore for that: kurenai-lock.lua sets it).
+# Gives up after 4 crashes within 60 s so a broken install cannot spin forever; run
+# `kurenai-ctl lock-recover` to start it again.
+set -u
+
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+LOGRULES='qt.qpa.wayland.textinput.warning=false'
+
+# Everything the locker prints goes to a plain-text log, readable from a TTY even when the screen is stuck:
+#   tail -n 80 "$XDG_RUNTIME_DIR/kurenai-lock.log"        (it holds states and counts, never passwords)
+LOG="$RUN/kurenai-lock.log"
+[ -f "$LOG" ] && [ "$(stat -c %s "$LOG" 2>/dev/null || echo 0)" -gt 1048576 ] && mv -f "$LOG" "$LOG.1"
+
+say() {
+  if command -v logger >/dev/null 2>&1; then logger -t kurenai-lock "$*"; fi
+  printf '%s kurenai-lock-supervisor: %s\n' "$(date +%T)" "$*" >> "$LOG"
+  printf 'kurenai-lock-supervisor: %s\n' "$*" >&2
+}
+
+# one supervisor at a time
+exec 9>"$RUN/kurenai-lock-supervisor.lock"
+command -v flock >/dev/null 2>&1 && { flock -n 9 || exit 0; }
+
+command -v qs >/dev/null 2>&1 || { say "qs (quickshell) not found on PATH"; exit 1; }
+[ -f "${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/kurenai-lock/shell.qml" ] || { say "kurenai-lock is not installed"; exit 1; }
+
+# The locker needs the Wayland session it was started in. A supervisor that outlives its session (Hyprland
+# restarted or killed) would crash-loop AND keep the one-supervisor lock, blocking the new session's supervisor.
+session_alive() {
+  local sock="${WAYLAND_DISPLAY:-}"
+  [ -n "$sock" ] || return 1
+  case "$sock" in /*) ;; *) sock="$RUN/$sock" ;; esac
+  [ -S "$sock" ]
+}
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+  say "WAYLAND_DISPLAY is not set: this must be started from INSIDE your Hyprland session (not from a TTY). Use: kurenai-ctl lock-recover"
+  exit 1
+fi
+
+crashes=()
+while :; do
+  if ! session_alive; then say "the Wayland session is gone: exiting (the next session starts its own supervisor)"; exit 0; fi
+  say "starting qs -c kurenai-lock"
+  qs -c kurenai-lock --log-rules "$LOGRULES" >> "$LOG" 2>&1
+  code=$?
+  # a deliberate stop (exit 0, SIGINT 130, SIGTERM 143): do not restart
+  case "$code" in 0|130|143) exit 0 ;; esac
+
+  now="$(date +%s)"
+  fresh=()
+  for t in "${crashes[@]}"; do [ $((now - t)) -lt 60 ] && fresh+=("$t"); done
+  crashes=("${fresh[@]}" "$now")
+  say "lock process exited with code $code (${#crashes[@]} recent)"
+  if [ "${#crashes[@]}" -ge 4 ]; then
+    say "giving up after repeated crashes. Read the reason with: qs log -c kurenai-lock   (or run it in a terminal: qs -c kurenai-lock)"
+    say "then start it again with: kurenai-ctl lock-start"
+    exit 1
+  fi
+  sleep 1
+done

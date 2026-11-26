@@ -18,6 +18,10 @@ local binds = {
   { "SUPER + N",             QS .. "notifications toggle" },
   { "SUPER + SHIFT + N",     QS .. "notifications dnd" },
   { "SUPER + A",             QS .. "quicksettings toggle" },
+  { "SUPER + C",             QS .. "calendar toggle" },
+  { "SUPER + SHIFT + M",     QS .. "media toggle" },
+  { "SUPER + ESCAPE",        QS .. "powermenu toggle" },
+  { "SUPER + L",             "qs -c kurenai-lock ipc call lock lock" },
 }
 
 for _, b in ipairs(binds) do

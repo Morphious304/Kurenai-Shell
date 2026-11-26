@@ -1,0 +1,9 @@
+singleton Theme 1.0 Theme.qml
+singleton Config 1.0 Config.qml
+singleton LockState 1.0 LockState.qml
+Seal 1.0 Seal.qml
+Petal 1.0 Petal.qml
+Pattern 1.0 Pattern.qml
+Wallpaper 1.0 Wallpaper.qml
+LockView 1.0 LockView.qml
+LockController 1.0 LockController.qml
