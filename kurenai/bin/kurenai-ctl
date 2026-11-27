@@ -88,6 +88,7 @@ Usage: kurenai-ctl <command>
   disable-hypr       remove that line
   enable-glass       optional hyprglass plugin: add ONE marked line that loads it at every start AND applies the KURENAI glass settings
   disable-glass      remove that line
+  glass-reset        clear the safety switch (glass.disabled) so glass may load again after a start that did not finish
   glass-status       read-only report: hook, plugin file, running plugin state, config errors, shell translucency
   status [--json]    one machine-readable report: shell, lock, hooks, colours, tools (the settings window reads this)
 
@@ -236,7 +237,18 @@ cmd_disable_autostart() { hook_remove "autostart" "$MARK_AUTO"; }
 cmd_enable_glass()  { hook_add    "glass" "$MARK_GLASS" "$HOOK_GLASS" "kurenai-glass.lua"; cmd_glass_status_short; }
 cmd_disable_glass() { hook_remove "glass" "$MARK_GLASS"; }
 
-# Same places kurenai-glass.lua looks, same order. Prints the first readable one.
+glass_state() { printf '%s' "${XDG_STATE_HOME:-$HOME/.local/state}/kurenai"; }
+# Clears the safety switch kurenai-glass-start sets after a start that did not finish, so glass may load again.
+cmd_glass_reset() {
+  local d; d="$(glass_state)"
+  if [ -e "$d/glass.disabled" ] || [ -e "$d/glass.starting" ]; then
+    rm -f "$d/glass.disabled" "$d/glass.starting"; ok "glass safety switch cleared: the next start will try to load glass again"
+  else
+    ok "nothing to clear (glass was not switched off)"
+  fi
+}
+
+# Same places kurenai-glass.lua looks (LOADER "config" only), same order. Prints the first readable one.
 glass_so() {
   local u="${USER:-$(id -un 2>/dev/null)}" p
   for p in "${KURENAI_HYPRGLASS_SO:-}" "/var/cache/hyprpm/$u/HyprGlass/hyprglass.so" "/var/cache/hyprpm/$u/hyprglass/hyprglass.so" \
@@ -246,11 +258,11 @@ glass_so() {
   return 1
 }
 cmd_glass_status_short() {
-  glass_so >/dev/null && return 0
-  echo "glass: the hook is in place, but hyprglass.so was not found. Install the plugin once (as your user, no sudo needed for these):"
+  have hyprpm && hyprpm list 2>/dev/null | grep -qi glass && { echo "glass: the plugin is known to hyprpm. It loads at the NEXT login (30 s safety net: kurenai-ctl glass-status)."; return 0; }
+  echo "glass: the hook is in place, but hyprpm does not list hyprglass. Install the plugin once (as your user, no sudo needed for these):"
   echo "         hyprpm add https://github.com/hyprnux/hyprglass"
   echo "         hyprpm enable hyprglass"
-  echo "       then log out and in (or: hyprctl reload). Full report: kurenai-ctl glass-status"
+  echo "       then log out and in. Full report: kurenai-ctl glass-status"
 }
 cmd_glass_status() {
   local f="$HYPR_DIR/hyprland.lua" so
@@ -265,9 +277,22 @@ cmd_glass_status() {
   if grep -qE 'hl\.plugin\.hyprglass' "$f" 2>/dev/null; then
     warn "your own hyprglass block is still in hyprland.lua; the KURENAI one is loaded after it and wins key by key. Remove yours to avoid confusion."
   fi
+  local d lm; d="$(glass_state)"
+  lm="$(sed -nE 's/^local LOADER[[:space:]]*=[[:space:]]*"([a-z]+)".*/\1/p' "$HYPR_DIR/kurenai-glass.lua" 2>/dev/null | head -1)"
+  echo "Safety net"
+  echo "  loader mode: ${lm:-unknown}  (start = loads after Hyprland is ready; kurenai-glass-start does it)"
+  if [ -x "$(prog_path kurenai-glass-start)" ]; then ok "kurenai-glass-start installed"; else warn "kurenai-glass-start is missing: re-run install.sh (without it nothing loads the plugin)"; fi
+  if [ -e "$d/glass.disabled" ]; then warn "glass is switched OFF by the safety net (the last start with glass did not finish). Read the log below, then: kurenai-ctl glass-reset"
+  elif [ -e "$d/glass.starting" ]; then warn "a start with glass is in progress, or the last one never finished (stamp present). If you just logged in, this clears itself after 30 s."
+  else ok "no unfinished start recorded"; fi
+  if [ -f "$d/glass-start.log" ]; then echo "  last lines of $d/glass-start.log:"; tail -n 12 "$d/glass-start.log" | sed 's/^/    /'; fi
   echo "Plugin side"
-  if have hyprpm; then ok "hyprpm present"; else warn "hyprpm not found (it ships with Hyprland; without it use a downloaded hyprglass.so and set SO in kurenai-glass.lua)"; fi
-  if so="$(glass_so)"; then ok "hyprglass.so: $so"; else warn "hyprglass.so not found (hyprpm add https://github.com/hyprnux/hyprglass && hyprpm enable hyprglass)"; fi
+  if have hyprpm; then ok "hyprpm present"; else warn "hyprpm not found (it ships with Hyprland)"; fi
+  if have hyprpm; then
+    local hl2; hl2="$(hyprpm list 2>&1 | grep -iE -A4 'glass' | head -8 || true)"
+    [ -n "$hl2" ] && { echo "  hyprpm list (glass part):"; printf '%s\n' "$hl2" | sed 's/^/    /'; } || warn "hyprpm list shows no hyprglass: hyprpm add https://github.com/hyprnux/hyprglass && hyprpm enable hyprglass"
+  fi
+  if so="$(glass_so)"; then ok "hyprglass.so: $so"; else echo "  hyprglass.so not found in the usual places (only matters for loader mode config; hyprpm keeps its own copy)"; fi
   echo "Running session"
   if have hyprctl && hyprctl version >/dev/null 2>&1; then
     local pl; pl="$(hyprctl plugin list 2>/dev/null)"
@@ -2156,6 +2181,7 @@ case "${1:-}" in
   enable-glass)      cmd_enable_glass ;;
   disable-glass)     cmd_disable_glass ;;
   glass-status)      cmd_glass_status ;;
+  glass-reset)       cmd_glass_reset ;;
   enable-hypr)       cmd_enable_hypr ;;
   disable-hypr)      cmd_disable_hypr ;;
   clip)              shift; cmd_clip "$@" ;;

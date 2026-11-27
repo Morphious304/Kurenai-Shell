@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# kurenai-glass-start: loads the hyprglass plugin AFTER Hyprland is up, with a safety net.
+# Started by kurenai-glass.lua from the "hyprland.start" event (once per session, when the compositor is ready).
+#
+# Why not load it while the config is being read: Hyprland then re-reads the whole config before it is ready, and the
+# plugin's own documentation lists "Hyprland never finishes starting" as a known problem of that route. Loading it from a
+# running session is exactly what `hyprpm reload` does by hand, and that is what this does for you.
+#
+# Safety net ("stamp"): the first thing it does is write ~/.local/state/kurenai/glass.starting, and it deletes it after
+# GRACE seconds (default 30) of the session still being alive. If the machine freezes or Hyprland dies inside that window
+# the stamp is left behind; the NEXT start finds it, switches glass OFF (writes glass.disabled), loads nothing and tells you.
+# Switch it back on with:  kurenai-ctl glass-reset
+# Limit: a freeze later than GRACE seconds after login is not caught (for that, kurenai-ctl disable-glass from a TTY).
+# Also limit: logging out within GRACE seconds by hard power-off trips it too; that is what glass-reset is for.
+#
+# Never needs root. Touches only ~/.local/state/kurenai/ and runs `hyprpm reload` / `hyprctl reload` as you.
+set -u
+
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}/kurenai"
+STAMP="$STATE/glass.starting"
+OFF="$STATE/glass.disabled"
+LOG="$STATE/glass-start.log"
+GRACE="${KURENAI_GLASS_GRACE:-30}"
+
+mkdir -p "$STATE" 2>/dev/null || exit 0
+[ -f "$LOG" ] && [ "$(stat -c %s "$LOG" 2>/dev/null || echo 0)" -gt 262144 ] && mv -f "$LOG" "$LOG.1"
+say() { printf '%s kurenai-glass-start: %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; }
+note() {   # best-effort desktop notification (the KURENAI shell shows it); never fails the script
+  command -v notify-send >/dev/null 2>&1 && notify-send -a KURENAI -u critical "$1" "$2" >/dev/null 2>&1 || true
+}
+
+# 1. glass was switched off by the safety net (or by hand): do nothing until `kurenai-ctl glass-reset`
+if [ -e "$OFF" ]; then say "glass.disabled is present: not loading (kurenai-ctl glass-reset to allow it again)"; exit 0; fi
+
+# 2. the previous start never got GRACE seconds in: switch glass off, load nothing
+if [ -e "$STAMP" ]; then
+  : > "$OFF"; rm -f "$STAMP"
+  say "STALE STAMP: the previous start with glass did not reach ${GRACE}s. Glass is now OFF. Not loading."
+  note "KURENAI glass is OFF" "The last start with glass did not finish. Nothing was loaded. Run: kurenai-ctl glass-status, then kurenai-ctl glass-reset to try again."
+  exit 0
+fi
+
+# 3. arm the stamp; a clean exit or a normal logout (TERM/HUP/INT) removes it, a freeze or a hard reset leaves it
+: > "$STAMP"
+trap 'rm -f "$STAMP"; exit 0' TERM HUP INT
+say "start (grace ${GRACE}s)"
+
+# 4. load it, the same way you did by hand, unless it is already loaded
+if ! command -v hyprctl >/dev/null 2>&1; then say "hyprctl not found: nothing to do"; rm -f "$STAMP"; exit 0; fi
+if hyprctl plugin list 2>>"$LOG" | grep -qi hyprglass; then
+  say "hyprglass is already loaded in this session (nothing else loads it twice)"
+elif ! command -v hyprpm >/dev/null 2>&1; then
+  say "hyprpm not found: cannot load. Install hyprglass.so another way and use LOADER = \"config\" in kurenai-glass.lua"
+  rm -f "$STAMP"; exit 0
+else
+  say "hyprpm reload -n"
+  hyprpm reload -n >>"$LOG" 2>&1; say "hyprpm exit $?"
+  # the glass settings live in the config: read it again now that the plugin exists
+  hyprctl reload >>"$LOG" 2>&1; say "hyprctl reload exit $?"
+fi
+if hyprctl plugin list 2>/dev/null | grep -qi hyprglass; then say "plugin is loaded"; else say "plugin is NOT loaded (see hyprpm output above; kurenai-ctl glass-status)"; fi
+
+# 5. survived the grace period: the start was fine
+sleep "$GRACE" & wait $!
+rm -f "$STAMP"; say "survived ${GRACE}s: stamp removed"
+exit 0

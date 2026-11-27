@@ -39,7 +39,16 @@ for f in kurenai-binds.lua kurenai-autostart.lua kurenai-lock.lua kurenai-glass.
   if [ ! -e "$CFG/hypr/$f" ]; then
     cp "$SRC/hypr/$f" "$CFG/hypr/$f"
   elif ! cmp -s "$SRC/hypr/$f" "$CFG/hypr/$f"; then
-    if [ "$f" = "kurenai-binds.lua" ] && case " $PREV_BINDS_SHA " in *" $(sha256sum "$CFG/hypr/$f" | cut -d' ' -f1) "*) true ;; *) false ;; esac; then
+    if [ "$f" = "kurenai-glass.lua" ] && ! grep -q '^local LOADER' "$CFG/hypr/$f"; then
+      # the first release of this module loaded the plugin WHILE the config was read, which can stop Hyprland from finishing its
+      # start (it froze a real machine). It is replaced on purpose, never kept; your copy goes to the backup folder.
+      mkdir -p "$REPLACED"; cp "$CFG/hypr/$f" "$REPLACED/kurenai-glass.lua.v1"
+      lite="$(sed -nE 's/^local PROFILE[[:space:]]*=[[:space:]]*"(lite)".*/\1/p' "$CFG/hypr/$f" | head -1)"
+      cp "$SRC/hypr/$f" "$CFG/hypr/$f"
+      [ "$lite" = "lite" ] && sed -i 's/^local PROFILE = "full"/local PROFILE = "lite"/' "$CFG/hypr/$f"
+      rm -f "$CFG/hypr/$f.new"
+      echo "     $f: replaced the first version (it loaded the plugin too early and could freeze the start). Your old copy: $REPLACED/kurenai-glass.lua.v1"
+    elif [ "$f" = "kurenai-binds.lua" ] && case " $PREV_BINDS_SHA " in *" $(sha256sum "$CFG/hypr/$f" | cut -d' ' -f1) "*) true ;; *) false ;; esac; then
       cp "$SRC/hypr/$f" "$CFG/hypr/$f"
       echo "     $f was an unmodified earlier version: updated (now reads your remaps from the Settings window; your old copy is in the backup)"
     else
@@ -83,6 +92,7 @@ install -m 0755 "$SRC/bin/kurenai-settings" "$BIN/kurenai-settings"  # opens the
 # program: Rofi starts entries without ~/.local/bin on PATH, so a bare "kurenai-settings" fails there.
 "$BIN/kurenai-ctl" desktop-entry install || echo "   (could not write the application entry; run later: kurenai-ctl desktop-entry install)"
 install -m 0755 "$SRC/bin/kurenai-lock-supervisor" "$BIN/kurenai-lock-supervisor"
+install -m 0755 "$SRC/bin/kurenai-glass-start" "$BIN/kurenai-glass-start"
 install -m 0755 "$SRC/bin/kurenai-clip" "$BIN/kurenai-clip"          # clipboard-history engine
 install -m 0755 "$SRC/bin/kurenai-sysmon" "$BIN/kurenai-sysmon"      # read-only snapshot for the system monitor
 mkdir -p "$STATE/clipboard/pins" && chmod 700 "$STATE/clipboard" "$STATE/clipboard/pins"   # pins/history metadata: private

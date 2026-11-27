@@ -3,20 +3,37 @@
 -- OPT-IN: `kurenai-ctl enable-glass` (undo: `kurenai-ctl disable-glass`).
 --
 -- This one file does two jobs, in this order:
---   1. LOADS the plugin. hyprpm builds it into /var/cache/hyprpm/<you>/HyprGlass/hyprglass.so, but `hyprpm enable`
---      only turns it on for the running session. Loading it from the config is what makes it come back at every login,
---      and it makes the settings below apply on the FIRST pass (a plugin loaded later by `hyprpm reload` arrives
---      after this file was already read, so the `if hl.plugin.hyprglass` block below would be skipped).
---      (When a config loads a plugin, Hyprland reads the config one more time during start-up. That is expected.)
---      Do not ALSO run `hyprpm reload` at start-up: a second copy is refused ("Paused: already loaded").
+--   1. LOADS the plugin, AFTER Hyprland is up (LOADER = "start", the default). `hyprland.start` fires once per session when the
+--      compositor is ready; then ~/.local/bin/kurenai-glass-start does what you did by hand (`hyprpm reload -n`) and re-reads the
+--      config so the settings below apply. Loading a plugin WHILE the config is read makes Hyprland read the config a second
+--      time before it is ready, and hyprglass lists "Hyprland never finishes starting" as a known problem of that route: that is
+--      what froze the first version of this file (LOADER = "config" is that old route, kept only as an opt-in).
+--      The script also keeps a safety stamp: if a start with glass never gets 30 s in (freeze, crash), the NEXT start switches
+--      glass OFF by itself and says so. Back on with: kurenai-ctl glass-reset.
 --   2. CONFIGURES it. Every key below is one hyprglass documents; `hyprctl configerrors` lists any it rejects.
 --
--- If the plugin is missing, was built for another Hyprland version, or anything here fails, you only lose the glass:
--- the rest of your config is untouched.
+-- Do not ALSO run `hyprpm reload` from your own autostart: a second copy is refused ("Paused: already loaded").
+-- If the plugin is missing or anything here fails, you only lose the glass: the rest of your config is untouched.
 
 -- ---- the two knobs ------------------------------------------------------------------------------------------------
-local PROFILE = "full"   -- "full": refraction, bevel, grain, glass on the shell.   "lite": lighter on the GPU (hybrid laptop).
-local SO      = nil      -- full path to hyprglass.so if yours lives somewhere unusual, e.g. "/home/you/hyprglass/hyprglass.so"
+local PROFILE = "full"    -- "full": refraction, bevel, grain, glass on the shell.   "lite": lighter on the GPU (hybrid laptop).
+local LOADER  = "start"   -- "start": load after Hyprland is ready (safe default).  "none": you load it yourself (hyprpm reload).
+                          -- "config": hl.plugin.load while the config is read. Documented by the plugin, but it can stop
+                          --           Hyprland from finishing its start. Only if you know why you want it.
+local SO      = nil       -- LOADER "config" only: full path to hyprglass.so, e.g. "/home/you/hyprglass/hyprglass.so"
+
+-- ---- 0. the safety switch -------------------------------------------------------------------------------------------
+-- kurenai-glass-start writes this file when the previous start with glass did not finish; `kurenai-ctl glass-reset` removes it.
+local STATE = (os.getenv("XDG_STATE_HOME") or "") ~= "" and os.getenv("XDG_STATE_HOME") or ((os.getenv("HOME") or "") .. "/.local/state")
+local OFF   = STATE .. "/kurenai/glass.disabled"
+do
+  local f = io.open(OFF, "r")
+  if f then
+    f:close()
+    print("[kurenai] glass is OFF: the last start with glass did not finish. See `kurenai-ctl glass-status`; `kurenai-ctl glass-reset` to try again.")
+    return
+  end
+end
 
 -- ---- 1. load the plugin ---------------------------------------------------------------------------------------------
 local function readable(p)
@@ -42,7 +59,12 @@ local function find_so()
   return nil
 end
 
-if hl.plugin and hl.plugin.load and not hl.plugin.hyprglass then
+if LOADER == "start" then
+  -- once per session, when Hyprland is ready (not on every `hyprctl reload`); the script does the loading and the safety stamp
+  hl.on("hyprland.start", function()
+    hl.exec_cmd("$HOME/.local/bin/kurenai-glass-start")
+  end)
+elseif LOADER == "config" and hl.plugin and hl.plugin.load and not hl.plugin.hyprglass then
   local so = find_so()
   if not so then
     print("[kurenai] hyprglass.so not found. Install it once: hyprpm add https://github.com/hyprnux/hyprglass && hyprpm enable hyprglass  (see: kurenai-ctl glass-status)")

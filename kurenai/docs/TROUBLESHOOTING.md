@@ -90,10 +90,11 @@ Last resort, ends your session and loses unsaved work: `pkill -x Hyprland`.
 - **Icons are empty boxes:** install the "JetBrainsMono Nerd Font" (the shell uses it too).
 
 ## Glass (hyprglass)
-- **The plugin is not loaded after login:** `kurenai-ctl glass-status` says which part is missing (hook, plugin file, a second loader, a paused plugin). Details and causes: [GLASS.md](GLASS.md).
+- **Freeze at start after `enable-glass`:** from a TTY (Ctrl+Alt+F3 before logging in) run `kurenai-ctl disable-glass`, then update KURENAI. The first version loaded the plugin too early. Full steps and the read-only commands that show what happened: [GLASS.md](GLASS.md), "If it froze your machine".
+- **Glass switched itself off:** the last start with glass did not reach 30 s. `kurenai-ctl glass-status` shows the log. When you know why, `kurenai-ctl glass-reset`.
+- **The plugin is not loaded after login:** `kurenai-ctl glass-status` says which part is missing (hook, hyprpm entry, a second loader, a paused plugin).
 - **"Paused: built for Hyprland X, running Y":** `hyprpm update`, then log out and in.
 - **Loaded, but nothing looks like glass:** glass needs translucency. Bar and panels: `kurenai-conf set glassOpacity 72`. Windows: the app's own opacity (kitty: `background_opacity`).
-- **Hyprland hangs at start after enabling it:** from a TTY, `kurenai-ctl disable-glass` (it only removes one line; a copy of hyprland.lua is kept as `hyprland.lua.pre-disable-*`).
 
 ## Still stuck
 
