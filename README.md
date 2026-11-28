@@ -151,7 +151,7 @@ sudo pacman -S adwaita-fonts ttf-jetbrains-mono-nerd noto-fonts-cjk
 **1. Get it**
 
 ```bash
-git clone https://github.com/<your-user>/Kurenai-Shell.git
+git clone https://github.com/Morphious304/Kurenai-Shell.git
 cd Kurenai-Shell
 ```
 
