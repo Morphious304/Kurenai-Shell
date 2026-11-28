@@ -1,4 +1,6 @@
-# KURENAI
+# KURENAI: the full manual
+
+[Back to the front page](../README.md)
 
 A Japanese anime-inspired desktop shell for **Hyprland** (Lua config, 0.55 or newer) built entirely on **Quickshell**:
 top bar, notification popups and centre, application launcher (Apps / Run / Prime / Walls tabs), quick settings, media panel, calendar, on-screen display,
@@ -20,9 +22,9 @@ SDDM, PipeWire, NetworkManager, kitty. Other setups may work but were not tried.
 - [9. Rollback](#9-rollback)
 - [10. What is verified and what is not](#10-what-is-verified-and-what-is-not)
 
-Detail pages (in `docs/`): [LOCK-SCREEN](docs/LOCK-SCREEN.md), [CLIPBOARD-AND-SYSMON](docs/CLIPBOARD-AND-SYSMON.md),
-[LAUNCHER](docs/LAUNCHER.md), [THEME](docs/THEME.md) (wallpaper colours), [FIREFOX](docs/FIREFOX.md), [SHORTCUTS-PAGE](docs/SHORTCUTS-PAGE.md), [PANELS](docs/PANELS.md), [GLASS](docs/GLASS.md) (hyprglass plugin), [TROUBLESHOOTING](docs/TROUBLESHOOTING.md),
-[CHANGELOG](docs/CHANGELOG.md).
+Detail pages (in `docs/`): [LOCK-SCREEN](LOCK-SCREEN.md), [CLIPBOARD-AND-SYSMON](CLIPBOARD-AND-SYSMON.md),
+[LAUNCHER](LAUNCHER.md), [THEME](THEME.md) (wallpaper colours), [FIREFOX](FIREFOX.md), [SHORTCUTS-PAGE](SHORTCUTS-PAGE.md), [PANELS](PANELS.md), [GLASS](GLASS.md) (hyprglass plugin), [TROUBLESHOOTING](TROUBLESHOOTING.md),
+[CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -60,9 +62,9 @@ for you. Commands marked **sudo** change your system; read them before running t
 | Package | Feature | If missing |
 |---|---|---|
 | `rofi` | fallback launcher (`SUPER + SHIFT + SPACE`, and the Quickshell launcher falls back to it); themed by `rofi/kurenai.rasi` | no fallback launcher: install it, it is your safety net |
-| `matugen` | **wallpaper colours**: shell, lock screen, Rofi and borders follow the wallpaper ([docs/THEME.md](docs/THEME.md)) | the Quick Settings tiles are hidden; built-in colours stay |
+| `matugen` | **wallpaper colours**: shell, lock screen, Rofi and borders follow the wallpaper ([docs/THEME.md](THEME.md)) | the Quick Settings tiles are hidden; built-in colours stay |
 | `adw-gtk-theme`, `qt6ct`/`qt5ct`, `kitty`, `btop`, `yazi`, `zathura`, `neovim`, `spicetify`, `pacsea`, `lazygit` | **app colours**: each one you attach follows the same colours (`kurenai-ctl theme extras`) | that app is simply not offered / unchanged |
-| `firefox` | **Firefox theme** (opt-in): docked tab rail / one-row horizontal tabs, detached launcher card, start page; `kurenai-ctl theme extra firefox on` ([docs/FIREFOX.md](docs/FIREFOX.md)); hide button + keys need the optional fx-autoconfig loader | not touched; nothing is attached unless you ask |
+| `firefox` | **Firefox theme** (opt-in): docked tab rail / one-row horizontal tabs, detached launcher card, start page; `kurenai-ctl theme extra firefox on` ([docs/FIREFOX.md](FIREFOX.md)); hide button + keys need the optional fx-autoconfig loader | not touched; nothing is attached unless you ask |
 | `nvidia-prime` (provides `prime-run`) | launcher **Prime** tab | the tab says it is not installed |
 | `brightnessctl` | brightness slider | row shows an install hint |
 | `power-profiles-daemon` | Saver / Balanced / Performance | section hidden |
@@ -92,7 +94,7 @@ skip it, it is optional).
 
 ```
 kurenai/
-├── README.md                     this file
+├── README.md                     this manual
 ├── install.sh                    copies files into place after a backup; starts nothing, edits nothing
 ├── bin/
 │   ├── kurenai-ctl               setup / start / stop / validate / rollback (run `kurenai-ctl` for the list)
@@ -207,10 +209,10 @@ Each step is small and checked before the next. Stop and send me the output if a
    ```bash
    kurenai-ctl enable-autostart
    ```
-9. **Lock screen, in this order.** Read [docs/LOCK-SCREEN.md](docs/LOCK-SCREEN.md) first. The short version:
+9. **Lock screen, in this order.** Read [docs/LOCK-SCREEN.md](LOCK-SCREEN.md) first. The short version:
    `kurenai-ctl lock-preview` (real password check, locks nothing) then `enable-lock`, `lock-start`, open a TTY with
    `Ctrl+Alt+F3` as a safety net, and only then `kurenai-ctl lock`.
-10. **Optional:** `kurenai-ctl lock-hypridle` (lock on idle), clipboard history ([docs](docs/CLIPBOARD-AND-SYSMON.md)),
+10. **Optional:** `kurenai-ctl lock-hypridle` (lock on idle), clipboard history ([docs](CLIPBOARD-AND-SYSMON.md)),
     brightness OSD (`kurenai-ctl media-binds` prints the one-line change, applies nothing).
 
 ---
@@ -246,7 +248,7 @@ After you edit the main `Theme.qml`: `kurenai-ctl lock-sync-theme` copies it int
 ## 5. Using it: shortcuts and IPC
 
 The **live** list of every shortcut in your own config is the shortcuts page: `SUPER + /`
-(details: [docs/SHORTCUTS-PAGE.md](docs/SHORTCUTS-PAGE.md)). It reads your files, so it cannot go stale. The table below is the
+(details: [docs/SHORTCUTS-PAGE.md](SHORTCUTS-PAGE.md)). It reads your files, so it cannot go stale. The table below is the
 static copy of what `kurenai-binds.lua` ships.
 
 | Keys | Does |
@@ -271,7 +273,7 @@ Inside panels (every panel: `Esc` closes, click outside closes):
 
 | Panel | Keys |
 |---|---|
-| Launcher | type to filter, `Up/Down` or `Ctrl+N/P/J/K` move, `Enter` launches, `Ctrl+F` favourite, `Tab` / `Ctrl+1..4` switch tab. Other tabs: [docs/LAUNCHER.md](docs/LAUNCHER.md) |
+| Launcher | type to filter, `Up/Down` or `Ctrl+N/P/J/K` move, `Enter` launches, `Ctrl+F` favourite, `Tab` / `Ctrl+1..4` switch tab. Other tabs: [docs/LAUNCHER.md](LAUNCHER.md) |
 | Clipboard | `Enter` copies the entry back (paste with your usual `Ctrl+V`), `Ctrl+P` pin, `Shift+Delete` delete, `Tab` History/Pinned |
 | Shortcuts | type to filter (every word must match), `Up/Down`, `PageUp/PageDown`, `Home/End` |
 | Calendar | arrows move the selected day, `PageUp/PageDown` change month, `Home` goes to today |
@@ -306,9 +308,9 @@ Quickshell reloads QML when you save a file, so most changes appear immediately.
 
 | To change | Edit | Notes |
 |---|---|---|
-| Colours that follow the wallpaper | Quick Settings, or `kurenai-ctl theme ...` | [docs/THEME.md](docs/THEME.md) |
-| Glass (hyprglass plugin, optional) | `kurenai-ctl enable-glass`, `glass-status`; `kurenai-conf set glassOpacity 72` | [docs/GLASS.md](docs/GLASS.md) |
-| Firefox theme (opt-in) | `kurenai-ctl theme extra firefox on` | [docs/FIREFOX.md](docs/FIREFOX.md) |
+| Colours that follow the wallpaper | Quick Settings, or `kurenai-ctl theme ...` | [docs/THEME.md](THEME.md) |
+| Glass (hyprglass plugin, optional) | `kurenai-ctl enable-glass`, `glass-status`; `kurenai-conf set glassOpacity 72` | [docs/GLASS.md](GLASS.md) |
+| Firefox theme (opt-in) | `kurenai-ctl theme extra firefox on` | [docs/FIREFOX.md](FIREFOX.md) |
 | Fixed (built-in) colours | `~/.config/quickshell/kurenai/Theme.qml` | the `defaults` table; with wallpaper colours on, these are only the fallback. Roles: `bg surface raised panelBg`, `text text2 muted`, `accent accentText accentDeep teal rose amber`. Keep small red text on `accentText`, not `accent` (contrast) |
 | Fonts | `Theme.qml`: `fontUi`, `fontMono`, `fontDisplay` | check what you have with `fc-list \| grep -i NAME` |
 | Sizes, spacing, radii | `Theme.qml`: `s1..s6` (4 px unit), `rSm/rMd/rLg`, `barHeight`, `*Width` | |
@@ -319,7 +321,7 @@ Quickshell reloads QML when you save a file, so most changes appear immediately.
 | Panels hang from the bar or float | `Config.qml`: `launcherDocked`, `quickSettingsDocked`, `popoverDocked` | |
 | Brightness curve | `Config.qml`: `brightnessExponent`, `brightnessMin` | must equal the `-eN -nM` your brightness keys use |
 | Clipboard retention / disable | `Config.qml`: `clipboardRetentionDays`, `clipboardEnabled` | |
-| Wallpaper folders, transition, grid size; Run history | `Config.qml`: `wallpaperDirs`, `wallpaperTransition`, `wallpaperColumns`, `runHistory`... | [docs/LAUNCHER.md](docs/LAUNCHER.md) |
+| Wallpaper folders, transition, grid size; Run history | `Config.qml`: `wallpaperDirs`, `wallpaperTransition`, `wallpaperColumns`, `runHistory`... | [docs/LAUNCHER.md](LAUNCHER.md) |
 | Where the shortcuts page reads | `Config.qml`: `hyprMainFile` | only if your config is not at `~/.config/hypr/hyprland.lua` |
 | Window borders, gaps, rounding, blur | top of `~/.config/hypr/kurenai.lua` and the values below it | `ENABLE_BLUR` is off: it costs GPU on hybrid-graphics laptops. `FLOAT_ACCENT` gives floating windows a teal frame |
 | Keybinds | `~/.config/hypr/kurenai-binds.lua` | one `{ "CHORD", command }` per line; then `hyprctl reload` |
@@ -337,7 +339,7 @@ Your edits live in your installed copy; an update moves it aside (section 4), so
 | Run-tab command history | `~/.local/share/kurenai/runhistory.json` (mode 600) | the last 50 commands you ran from the Run tab; a command starting with a space is never saved; `Config.runHistory = false` saves none. Reset: `kurenai-ctl reset-launcher` |
 | Current wallpaper | awww's own cache (`~/.cache/awww`) | KURENAI saves nothing about wallpapers |
 | Notification history | memory only | gone when Quickshell stops |
-| Clipboard history | `~/.cache/cliphist/db` (mode 600) | 30 days, then deleted. Pause or wipe any time. [Details](docs/CLIPBOARD-AND-SYSMON.md) |
+| Clipboard history | `~/.cache/cliphist/db` (mode 600) | 30 days, then deleted. Pause or wipe any time. [Details](CLIPBOARD-AND-SYSMON.md) |
 | Clipboard pins | `~/.local/share/kurenai/clipboard/pins/` (mode 700) | until you remove them |
 | Backups | `~/.local/share/kurenai/backups/<timestamp>/` | copies of `~/.config/hypr` and `~/.config/quickshell`. They can contain anything you keep in those folders |
 | Lock-screen log | `$XDG_RUNTIME_DIR/kurenai-lock.log` | states and counts only, never passwords |
@@ -349,14 +351,14 @@ shell. Nothing runs through `sudo`. Notification text and clipboard text are sho
 
 ## 8. Troubleshooting
 
-Start here: `kurenai-ctl validate`. The full list is in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md). The four you are most likely to hit:
+Start here: `kurenai-ctl validate`. The full list is in [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md). The four you are most likely to hit:
 
 | Symptom | Cause and fix |
 |---|---|
 | Two bars, or `Could not register notification server` | a second `qs -c kurenai` was started by hand. Use `kurenai-ctl start` / `restart` only. Check with `kurenai-ctl validate` |
 | Notifications go nowhere | another daemon owns the service: `kurenai-ctl notif-status`, then `notif-takeover` |
 | A panel key does nothing | the bind is missing or clashes: `kurenai-ctl binds-check`; or open the shortcuts page and search the key |
-| Screen is grey or stuck after locking | `Ctrl+Alt+F3`, log in, `kurenai-ctl lock-recover`, switch back. Full steps in [docs/LOCK-SCREEN.md](docs/LOCK-SCREEN.md) |
+| Screen is grey or stuck after locking | `Ctrl+Alt+F3`, log in, `kurenai-ctl lock-recover`, switch back. Full steps in [docs/LOCK-SCREEN.md](LOCK-SCREEN.md) |
 
 Logs: `kurenai-ctl logs` (running shell), `kurenai-ctl debug` (foreground), `qs log -c kurenai-lock` (locker).
 
@@ -410,15 +412,15 @@ Against the original project's "definition of done":
 | Palette and consistency across bar and panels | one `Theme.qml`; artboard of every panel published |
 | Bar shows real information; workspaces reflect Hyprland and switch | implemented; confirm on your screen |
 | Launcher discovers installed apps; Rofi remains | implemented; Rofi untouched, plus an optional matching theme |
-| App colours (kitty, gtk, qt, btop, yazi, zathura, nvim, spicetify) | rendered and syntax-checked for all 720 generated palettes with contrast checks, attach/detach round trip verified in a fake home to restore your original files byte for byte (one exception: a file that had no final newline gets one); Neovim 0.9.5 loaded 80 generated colourschemes and picked up a live colour change; **none of the other apps was run here**, see [docs/THEME.md](docs/THEME.md) |
-| Firefox theme (CSS layer, start page, script layer) | install/undo/profile detection/colours run in a fake home with a fake `firefox`; CSS parsed with postcss; script logic run against a mock DOM. **Version 4 was run in a real Firefox 160.0.1** with real key presses (one-row tabs, detached launcher card, hide states, new tab page, start page) under a virtual-display test rig; **not reproduced:** your Hyprland session, real profile/add-ons, hover feel. See [docs/FIREFOX.md](docs/FIREFOX.md) |
-| Wallpaper colours (matugen) | real matugen 4.2.0 run over 720 generated palettes (40 test images x 9 schemes x 2 accent modes) and checked by the same guard code as Theme.qml, the Hyprland loader and real Rofi; **QML behaviour and `hyprctl reload` not run on a real desktop by me**, see [docs/THEME.md](docs/THEME.md) |
-| KURENAI Settings window (15 pages) | every page loads and the main controls work in an offscreen Qt Quick rig with stand-in Quickshell modules that run the real `kurenai-*` scripts in a throwaway home (20 + 15 scripted click/key checks; CLI suites 69 + 37 + 39); **never started under real Quickshell, Hyprland, matugen or awww by me**, see [docs/SETTINGS.md](docs/SETTINGS.md) |
-| Launcher tabs: Apps, Run, Prime, Walls | written and syntax/logic-checked in a sandbox; **not run on a real desktop by me**, see [docs/LAUNCHER.md](docs/LAUNCHER.md) |
+| App colours (kitty, gtk, qt, btop, yazi, zathura, nvim, spicetify) | rendered and syntax-checked for all 720 generated palettes with contrast checks, attach/detach round trip verified in a fake home to restore your original files byte for byte (one exception: a file that had no final newline gets one); Neovim 0.9.5 loaded 80 generated colourschemes and picked up a live colour change; **none of the other apps was run here**, see [docs/THEME.md](THEME.md) |
+| Firefox theme (CSS layer, start page, script layer) | install/undo/profile detection/colours run in a fake home with a fake `firefox`; CSS parsed with postcss; script logic run against a mock DOM. **Version 4 was run in a real Firefox 160.0.1** with real key presses (one-row tabs, detached launcher card, hide states, new tab page, start page) under a virtual-display test rig; **not reproduced:** your Hyprland session, real profile/add-ons, hover feel. See [docs/FIREFOX.md](FIREFOX.md) |
+| Wallpaper colours (matugen) | real matugen 4.2.0 run over 720 generated palettes (40 test images x 9 schemes x 2 accent modes) and checked by the same guard code as Theme.qml, the Hyprland loader and real Rofi; **QML behaviour and `hyprctl reload` not run on a real desktop by me**, see [docs/THEME.md](THEME.md) |
+| KURENAI Settings window (15 pages) | every page loads and the main controls work in an offscreen Qt Quick rig with stand-in Quickshell modules that run the real `kurenai-*` scripts in a throwaway home (20 + 15 scripted click/key checks; CLI suites 69 + 37 + 39); **never started under real Quickshell, Hyprland, matugen or awww by me**, see [docs/SETTINGS.md](SETTINGS.md) |
+| Launcher tabs: Apps, Run, Prime, Walls | written and syntax/logic-checked in a sandbox; **not run on a real desktop by me**, see [docs/LAUNCHER.md](LAUNCHER.md) |
 | Notifications, history, Do Not Disturb share one state | implemented (`NotificationStore.qml`) |
 | Quick settings act on real devices, hide what is missing | implemented; per-control behaviour in the table in section 1 |
 | Works on laptop screen and external monitor | designed for it; not tested here |
 | Existing Hyprland settings intact | hooks are single marked lines; backups first |
 | Starts, restarts, reloads without duplicates | `qs -n`, single-instance checks in `kurenai-ctl` |
 | Missing optional tools degrade gracefully | yes, see section 1 |
-| Install, validate, troubleshoot, rollback documented | this file and `docs/` |
+| Install, validate, troubleshoot, rollback documented | this manual and `docs/` |

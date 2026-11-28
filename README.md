@@ -1,302 +1,329 @@
 <div align="center">
 
-# 紅 KURENAI
+<h1>紅 &nbsp;KURENAI</h1>
 
-**A wallpaper-driven desktop shell for Hyprland, built on Quickshell.**
+<p><b>A Japanese, anime-inspired desktop shell for Hyprland, built on Quickshell.</b><br>
+Vermilion on charcoal. Bone-white type. One look from the bar to the lock screen.</p>
 
-Bar, launcher, quick settings, notifications, clipboard history, lock screen and a full settings app, all in one coherent crimson-and-ink design that recolours itself (and your terminal, GTK and Qt apps) from your wallpaper.
+<p>
+  <img alt="Arch Linux" src="https://img.shields.io/badge/Arch_Linux-242424?style=for-the-badge&logo=archlinux&logoColor=F4E8BE">
+  <img alt="Hyprland 0.55+ (Lua config)" src="https://img.shields.io/badge/Hyprland_0.55%2B-F04436?style=for-the-badge&logoColor=white">
+  <img alt="Quickshell" src="https://img.shields.io/badge/Quickshell-242424?style=for-the-badge&logoColor=F4E8BE">
+  <img alt="Made with AI" src="https://img.shields.io/badge/made_with-AI_help-B8281E?style=for-the-badge">
+</p>
 
-![Hyprland](https://img.shields.io/badge/Hyprland-0.55%2B%20(Lua%20config)-58E1FF?style=flat-square)
-![Quickshell](https://img.shields.io/badge/Built%20with-Quickshell-9d7cd8?style=flat-square)
-![Arch Linux](https://img.shields.io/badge/Arch%20Linux-1793D1?style=flat-square&logo=arch-linux&logoColor=white)
-![AI assisted](https://img.shields.io/badge/Made%20with-AI%20assistance-e0af68?style=flat-square)
-
-<img src="screenshots/quick-settings.jpg" alt="KURENAI quick settings panel over the desktop" width="900">
+<img src="assets/hero-quick-settings.jpg" alt="KURENAI quick settings over a mountain wallpaper" width="100%">
 
 </div>
 
+> [!IMPORTANT]
+> **This project was made with the help of artificial intelligence.**
+> The design direction, the testing on a real machine and the decisions are the author's. The code, the scripts and the documentation
+> were written with **Claude** (an AI assistant made by Anthropic). Treat it like any other config you download:
+> read before you run, and keep the backups the installer makes. See [What is tested and what is not](#what-is-tested-and-what-is-not) for what was and was not run.
+
 ---
 
-> [!NOTE]
-> **This project was made with the help of artificial intelligence.**
-> The design and code were developed in collaboration with AI tools, directed and tested by the author on real hardware. It works on my machine, but it has not been tested on other setups. Read the scripts before you run them, keep a backup, and expect rough edges. Issues and pull requests are welcome.
-<!-- TODO: name the AI tools/models used if you want to credit them specifically. -->
-
-## Contents
-
-- [Features](#features)
-- [Screenshots](#screenshots)
-- [Platform and compatibility](#platform-and-compatibility)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Usage](#usage)
-- [The `kurenai-ctl` command](#the-kurenai-ctl-command)
-- [Uninstall and rollback](#uninstall-and-rollback)
-- [Troubleshooting](#troubleshooting)
-- [Credits](#credits)
-- [License](#license)
-
-## Features
-
-<img src="screenshots/bar.png" alt="KURENAI top bar" width="100%">
-
-- **Top bar** with the KURENAI menu, workspace indicators, the focused window title in the centre, and a status area for screen recorder, volume, Wi-Fi, battery, notifications, clock and quick settings.
-- **Launcher** with four tabs: **Apps**, **Run** (commands), **Prime** (launch apps on the NVIDIA GPU on hybrid-graphics laptops) and **Walls** (wallpaper switcher with previews). Favourites with `Ctrl+F`.
-- **Quick settings panel** with power profiles (Saver / Balanced / Performance), volume, microphone and brightness sliders, Wi-Fi and Bluetooth toggles, Do not disturb, Keep awake and Night light.
-- **Wallpaper-driven colours.** Pick a wallpaper and the shell recolours itself. Optional "App colours" extend the palette to other apps (kitty, GTK, Qt, btop and more). Choose the colour style and pin the vermilion accent if you want it to stay put.
-- **Settings app** (`kurenai-ctl settings`) for everything: colours, wallpaper, launcher, Rofi, bar and panels, notifications, clipboard, keybinds, startup, lock screen, display and input, backup and restore, logs and checks.
-- **Media widget** for anything that speaks MPRIS (Spotify, mpv, VLC, browser tabs).
-- **Notification centre** and a **clipboard history** (pinned items survive wipes).
-- **Keyboard shortcuts page** that reads your actual Hyprland config files, lists every bind, and checks them against what Hyprland has active.
-- **Lock screen** (`kurenai-lock`) with password and fingerprint support, and a safe preview mode that locks nothing.
-- **Reversible by design.** Every change KURENAI makes to your Hyprland config is a single marked line that `kurenai-ctl` can add or remove, and there is a one-command backup.
-- **Optional Rofi launcher** and an optional `hyprglass` Hyprland plugin integration for translucent windows.
-<!-- TODO: add a link to the hyprglass plugin repo you use, and list it under Optional requirements. -->
-
-## Screenshots
-
-<table>
-  <tr>
-    <td width="50%"><img src="screenshots/launcher-apps.jpg" alt="Launcher, Apps tab"><br><sub><b>Launcher: Apps</b></sub></td>
-    <td width="50%"><img src="screenshots/launcher-prime.jpg" alt="Launcher, Prime tab"><br><sub><b>Launcher: Prime</b> (run on the NVIDIA GPU)</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="screenshots/launcher-walls.jpg" alt="Launcher, Walls tab"><br><sub><b>Launcher: Walls</b> (wallpaper switcher)</sub></td>
-    <td width="50%"><img src="screenshots/shortcuts.jpg" alt="Keyboard shortcuts page"><br><sub><b>Keyboard shortcuts</b>, read from your real config</sub></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="screenshots/settings.jpg" alt="KURENAI Settings window"><br><sub><b>KURENAI Settings</b></sub></td>
-    <td width="50%"><img src="screenshots/lock-screen.jpg" alt="Lock screen"><br><sub><b>Lock screen</b></sub></td>
-  </tr>
-</table>
-
-**Media widget**
-
-<img src="screenshots/media-popup.png" alt="Media widget showing nothing playing" width="440">
-
-**Your apps follow the palette** (kitty running yazi, btop and Neovim)
-
-<table>
-  <tr>
-    <td width="33%"><img src="screenshots/app-yazi.jpg" alt="yazi file manager"></td>
-    <td width="33%"><img src="screenshots/app-btop.jpg" alt="btop system monitor"></td>
-    <td width="33%"><img src="screenshots/app-neovim.jpg" alt="Neovim"></td>
-  </tr>
-</table>
-
-## Platform and compatibility
+## At a glance
 
 | | |
 |---|---|
-| **Distribution** | Arch Linux (and Arch-based distributions that ship current Arch packages) |
-| **Compositor** | [Hyprland](https://hypr.land) **0.55 or newer**, using the **Lua configuration** (`hyprland.lua`). The old `hyprland.conf` (hyprlang) format is not what this project targets. |
-| **Shell toolkit** | [Quickshell](https://quickshell.org) (`qs`), Qt 6 / QML |
-| **Session** | Wayland only |
-| **Developed on** | ThinkPad P53, Intel + NVIDIA hybrid graphics, 1920×1080 display, PipeWire audio |
+| **What it is** | A complete desktop shell: top bar, notifications, launcher, quick settings, media, calendar, clipboard history, system monitor, power menu, shortcuts page, lock screen and a Settings app |
+| **Platform** | **Arch Linux** (or an Arch-based distro), **Wayland**, **Hyprland 0.55 or newer** using the new **Lua** config |
+| **Built on** | [Quickshell](https://quickshell.org) (QML). No Waybar, no eww, no GTK shell |
+| **Written and used on** | ThinkPad P53, hybrid Intel UHD 630 + NVIDIA Quadro T2000, SDDM, PipeWire, NetworkManager, kitty |
+| **Screenshots** | Hyprland 0.57.2, kitty 0.51.1 |
+| **Safe by design** | `install.sh` backs up first and starts nothing. Every step after it is a separate command you choose to run, and each one can be undone |
+| **Kept as is** | Your `hyprland.lua` is never replaced (KURENAI adds single marked lines), and **Rofi stays** as the fallback launcher |
 
-KURENAI is built around a single laptop setup. Desktops, multi-monitor layouts, AMD-only or Intel-only systems and non-Arch distributions may need adjustments. The **Prime** tab only makes sense on hybrid-graphics machines.
-<!-- TODO: confirm "Developed on" details and add anything you have since tested. -->
+---
+
+## Look
+
+<table>
+<tr>
+<td width="50%"><img src="assets/launcher-apps.jpg" alt="Launcher, Apps tab"><br><sub><b>Launcher</b>: Apps, Run, Prime and Walls tabs. <code>SUPER + SPACE</code></sub></td>
+<td width="50%"><img src="assets/launcher-wallpapers.jpg" alt="Launcher, Walls tab"><br><sub><b>Walls tab</b>: thumbnails of every wallpaper in your folder; Enter sets one</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/launcher-prime.jpg" alt="Launcher, Prime tab"><br><sub><b>Prime tab</b>: start an app on the NVIDIA GPU with <code>prime-run</code></sub></td>
+<td width="50%"><img src="assets/shortcuts.jpg" alt="Keyboard shortcuts page"><br><sub><b>Shortcuts page</b>: reads your real config, so it can never go stale. <code>SUPER + /</code></sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/lock-screen.jpg" alt="Lock screen"><br><sub><b>Lock screen</b>: its own process, password or fingerprint, a vertical 余波 tag</sub></td>
+<td width="50%"><img src="assets/settings-wallpaper.jpg" alt="KURENAI Settings, Wallpaper page"><br><sub><b>Settings app</b>: 15 pages; every control can show the command it runs</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/notifications.jpg" alt="Notification popups over a terminal"><br><sub><b>Notifications</b>: critical stays until dismissed, normal and low time out</sub></td>
+<td width="50%"><img src="assets/terminal-fastfetch.jpg" alt="kitty with fastfetch"><br><sub><b>Terminal</b>: kitty recoloured to match (fastfetch)</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="assets/firefox.jpg" alt="Themed Firefox with a custom start page"><br><sub><b>Firefox</b> (opt-in): tab rail, start page, detached launcher card</sub></td>
+<td width="50%"><img src="assets/pacsea.jpg" alt="Pacsea package browser"><br><sub><b>Pacsea</b> themed (one of the app colours)</sub></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><img src="assets/lazygit.jpg" alt="lazygit themed" width="50%"><br><sub><b>lazygit</b> themed</sub></td>
+</tr>
+</table>
+
+<sub>Network names, IP addresses, locations and bookmark titles were removed from these screenshots before publishing. The wallpapers are other people's artwork and are **not** part of this repository.</sub>
+
+---
+
+## What you get
+
+| Piece | What it does |
+|---|---|
+| **Bar** | KURENAI emblem, workspace dots that follow Hyprland, window title, clock, tray, volume, Wi-Fi, battery, notification bell |
+| **Quick settings** | Power profile (Saver / Balanced / Performance), output / input / brightness sliders, Wi-Fi and Bluetooth, Do Not Disturb, Keep awake, Night light, Wallpaper colours, Colour style, Settings. `SUPER + A` |
+| **Notifications** | Popups, a history centre, Do Not Disturb. One shared state. `SUPER + N` |
+| **Launcher** | **Apps** (with favourites), **Run** (commands, with history), **Prime** (NVIDIA GPU), **Walls** (wallpapers). `SUPER + SPACE` |
+| **Media, calendar, OSD** | An MPRIS panel, a month calendar, a pill for volume / brightness / mic |
+| **Clipboard history** | `cliphist` front-end with pins and one-key wipe. `SUPER + V` |
+| **System monitor** | Read-only CPU / memory / disk / temperature snapshot. `SUPER + I` |
+| **Shortcuts page** | Every shortcut in your Hyprland config, searchable, and checked against what Hyprland says is bound. `SUPER + /` |
+| **Power menu** | Lock, log out, reboot, shut down; the destructive ones need a second click. `SUPER + ESC` |
+| **Lock screen** | A separate process with a crash supervisor, password and optional fingerprint |
+| **Settings app** | 15 pages: Overview, Colours, App colours, Wallpaper, Launcher, Rofi, Bar and panels, Notifications, Clipboard, Keybinds, Startup and hooks, Lock screen, Display and input, Backup and restore, Logs and checks |
+| **Wallpaper colours** | [matugen](https://github.com/InioX/matugen) recolours the shell, lock screen, Rofi and window borders from your wallpaper |
+| **App colours** | kitty, GTK, Qt, btop, yazi, zathura, Neovim, Spicetify, Pacsea, lazygit and Firefox can follow the same palette, each one only when you attach it |
+| **Glass** (optional, experimental) | Blur and edge light behind translucent panels, through the [hyprglass](https://github.com/hyprnux/hyprglass) plugin |
+
+Everything optional degrades on its own: a missing tool hides or explains that one control instead of breaking the shell.
+
+---
 
 ## Requirements
 
-Install from the official repositories unless noted. Review any AUR `PKGBUILD` before you build it.
+### Platform
+
+- **Arch Linux** or an Arch-based distribution with `pacman`
+- **Wayland**, with **Hyprland 0.55 or newer** (the Lua config format). Check with `hyprctl version`
+- **Quickshell** (`qs --version`)
+- A display manager or TTY login that starts Hyprland. SDDM was used here
+- Another distro may work, but package names and paths were only checked on Arch
+
+### Packages
+
+Check any name first with `pacman -Si NAME`. If pacman says "not found", that package is not in your enabled repositories and
+is probably in the AUR: read its PKGBUILD before building it.
 
 **Required**
 
-| Package | Why |
+```bash
+sudo pacman -S hyprland quickshell
+```
+
+**Strongly recommended** (fonts; without them the look falls back to defaults)
+
+```bash
+sudo pacman -S adwaita-fonts ttf-jetbrains-mono-nerd noto-fonts-cjk
+```
+
+**Services most desktops already run** (used directly by Quickshell): PipeWire + WirePlumber (audio), NetworkManager (Wi-Fi), BlueZ (Bluetooth), UPower (battery).
+
+**Optional, grouped by what they unlock**
+
+| Feature | Packages |
 |---|---|
-| `hyprland` (0.55+) | The compositor. Lua configuration support is required. |
-| `quickshell` | Runs the shell (`qs -c kurenai`). Available in the `extra` repository. |
-| `kitty` | Default terminal, also used for the file manager and system monitor binds. |
-| `hyprpolkitagent` | Polkit authentication prompts. |
-| `xdg-desktop-portal-hyprland`, `xdg-desktop-portal-gtk` | Screen sharing and file dialogs. |
+| Fallback launcher (**keep this**) | `rofi` |
+| Wallpapers: set, and the Walls tab | `awww` |
+| Wallpaper colours | `matugen` |
+| Brightness, power profiles, night light | `brightnessctl`, `power-profiles-daemon`, `hyprsunset` |
+| Clipboard history | `cliphist`, `wl-clipboard`, `xdg-utils` |
+| Lock on idle, fingerprint | `hypridle`, `fprintd` |
+| NVIDIA Prime tab (hybrid laptops) | `nvidia-prime` (provides `prime-run`) |
+| Media keys, test notifications | `playerctl`, `libnotify` |
+| Shortcuts in quick settings | `nm-connection-editor`, `pwvucontrol` or `pavucontrol`, `blueman` or `overskride` |
+| Graceful log out | `hyprshutdown` |
+| App colours (attach any of these) | `adw-gtk-theme`, `qt6ct` / `qt5ct`, `kitty`, `btop`, `yazi`, `zathura`, `neovim`, `spicetify`, `pacsea`, `lazygit`, `firefox` |
+| Glass effects | the `hyprglass` plugin, built with `hyprpm` (see [Glass](#glass-optional-and-experimental)) |
 
-**System services the panels talk to** (needed for the matching feature to work)
+`kurenai-ctl validate` checks all of the above, read-only, and prints `[ ok ]`, `[warn]`, `[FAIL]` or `[ -- ]` (optional tool not installed) for each.
 
-| Feature | Typical package |
+---
+
+## Install
+
+> Nothing here needs root except the package install. `install.sh` itself never uses `sudo`, never edits your `hyprland.lua`
+> and never starts or stops anything. Run the steps one at a time and stop at the first error.
+
+**1. Get it**
+
+```bash
+git clone https://github.com/<your-user>/Kurenai-Shell.git
+cd Kurenai-Shell
+```
+
+**2. Look before you leap (read-only)**
+
+```bash
+hyprctl version | head -1
+qs --version
+ls ~/.config/hypr ~/.config/quickshell 2>/dev/null
+```
+
+**3. Install the files** (backs up first, starts nothing)
+
+```bash
+bash install.sh
+kurenai-ctl validate        # put ~/.local/bin on your PATH if this is "not found"
+```
+
+**4. Try it in the foreground.** `Ctrl+C` quits and leaves your desktop as it was.
+
+```bash
+kurenai-ctl debug
+```
+
+**5. Switch things on, one at a time**
+
+```bash
+kurenai-ctl enable              # appearance: one marked line added to hyprland.lua
+hyprctl configerrors            # empty means no errors
+kurenai-ctl binds-check         # look for clashes first
+kurenai-ctl enable-binds        # the 15 KURENAI keybinds
+kurenai-ctl notif-takeover      # only one program can own notifications (mako / dunst / swaync are stopped, and remembered)
+kurenai-ctl start
+kurenai-ctl enable-autostart    # start with the session
+```
+
+**6. The lock screen is last, and has its own safe order.** Open a second TTY first (`Ctrl+Alt+F3`) and read
+[docs/LOCK-SCREEN.md](docs/LOCK-SCREEN.md). The short version: `lock-preview`, `enable-lock`, `lock-start`, then `lock`.
+
+The long, step-by-step version (with what to expect at each step) is the [full manual](docs/MANUAL.md#3-first-time-install).
+
+### Updating
+
+`install.sh` is safe to re-run. Files you edited are kept or moved aside (never deleted); see the table in the [manual](docs/MANUAL.md#4-updating).
+
+```bash
+git pull && bash install.sh && kurenai-ctl validate && kurenai-ctl restart
+```
+
+### Undo
+
+| To undo | Run |
 |---|---|
-| Audio, volume and sound output | `pipewire`, `pipewire-pulse`, `wireplumber` |
-| Wi-Fi and network panel | `networkmanager` (`nm-connection-editor` for the advanced network window) |
-| Bluetooth | `bluez`, `bluez-utils` |
-| Power profiles (Saver / Balanced / Performance) | `power-profiles-daemon` |
-| Battery | `upower` |
-| Brightness keys and on-screen display | Works through `udevadm`; if the OSD does not react, see `kurenai-ctl media-binds` |
-| Fingerprint unlock | `fprintd` |
-<!-- TODO: verify each row against what the shell actually calls, and delete or correct any that are wrong. `kurenai-ctl validate` is the source of truth. -->
+| Everything at once: stops the lock screen, hands notifications back, removes every marked line KURENAI added to your Hyprland config, moves its files aside (your Rofi, backups and own files stay) | `kurenai-ctl rollback` |
+| Notifications back to the old daemon | `kurenai-ctl notif-restore` |
+| Wallpaper colours | `kurenai-ctl theme off` |
+| One app colour | `kurenai-ctl theme extra NAME off` |
+| Glass | `kurenai-ctl disable-glass` |
 
-**Optional**
+Backups of `~/.config/hypr` and `~/.config/quickshell` live in `~/.local/share/kurenai/backups/`.
 
-| Package | Why |
+---
+
+## Daily use
+
+| Keys | Does |
 |---|---|
-| `rofi` | Alternative launcher (`Super+Alt+Space`) |
-| `yazi`, `btop`, `neovim` | The apps bound to `Super+E`, `Super+Shift+Esc` and used in the screenshots |
-| `gpu-screen-recorder` | Screen recorder shown in the bar |
-| `nvidia-prime` (provides `prime-run`) | Prime tab on NVIDIA hybrid laptops |
-| `firefox`, `spotify-launcher` | Default browser and music binds |
-<!-- TODO: add the fonts and the wallpaper-colour generator (for example matugen) that KURENAI uses, with package names. `kurenai-ctl validate` also checks fonts. -->
+| `SUPER + SPACE` | Launcher (falls back to Rofi if the shell is not running) |
+| `SUPER + SHIFT + SPACE` | Rofi directly, with the KURENAI theme |
+| `SUPER + SHIFT + R` / `P` / `W` | Launcher on the **Run** / **Prime** / **Walls** tab |
+| `SUPER + A` | Quick settings |
+| `SUPER + N` / `SUPER + SHIFT + N` | Notification centre / Do Not Disturb |
+| `SUPER + C` | Calendar |
+| `SUPER + SHIFT + M` | Media panel |
+| `SUPER + V` | Clipboard history |
+| `SUPER + I` | System monitor |
+| `SUPER + /` | **Keyboard shortcuts** (the live list of everything bound) |
+| `SUPER + L` | Lock |
+| `SUPER + ESC` | Power menu |
 
-## Installation
+Every panel closes with `Esc` or a click outside. The full key tables and the IPC commands (`qs -c kurenai ipc call ...`) are in the [manual](docs/MANUAL.md#5-using-it-shortcuts-and-ipc).
+Bound to a key you do not like? Edit `~/.config/hypr/kurenai-binds.lua` or use the **Keybinds** page in Settings.
+
+---
+
+## Make it yours
+
+| To change | How |
+|---|---|
+| Almost anything, with buttons | open **KURENAI Settings** from the launcher (or run `kurenai-settings`) |
+| Colours that follow the wallpaper | quick settings tile **Wallpaper colours**, or `kurenai-ctl theme on` ([docs/THEME.md](docs/THEME.md)) |
+| Colours in your apps | `kurenai-ctl theme extras` lists them; `kurenai-ctl theme extra kitty on` attaches one and prints exactly what it changes |
+| Firefox | `kurenai-ctl theme extra firefox on` ([docs/FIREFOX.md](docs/FIREFOX.md)) |
+| Fonts, sizes, radii, animation speed | `~/.config/quickshell/kurenai/Theme.qml` |
+| Behaviour (OSDs, docking, limits, wallpaper folders) | `~/.config/quickshell/kurenai/Config.qml` |
+| Window borders, gaps, rounding | `~/.config/hypr/kurenai.lua` |
+
+Quickshell reloads QML when you save, so most edits show up straight away. The palette is vermilion `#F04436`, charcoal `#242424`, bone `#F4E8BE`, with teal and rose as quiet secondaries.
+
+---
+
+## Glass (optional, and experimental)
+
+Blur, a thin edge light and grain behind translucent panels, through the [hyprglass](https://github.com/hyprnux/hyprglass) plugin.
+It is **off by default** and the shell looks complete without it.
+
+```bash
+hyprpm add https://github.com/hyprnux/hyprglass && hyprpm enable hyprglass     # once, as your user
+kurenai-ctl enable-glass          # loads it after Hyprland is ready, with a safety net
+kurenai-ctl glass-status          # the one-stop report
+kurenai-conf set glassOpacity 72  # how see-through the panels are (100 = solid)
+```
 
 > [!WARNING]
-> KURENAI edits files under `~/.config/hypr` and `~/.config/quickshell`, and it can replace your lock screen. **Back up first** and test the lock screen in preview mode before enabling it. Keep a spare TTY (`Ctrl+Alt+F3`) available the first time you try it.
+> The first version of the glass module loaded the plugin while Hyprland was still reading its config, and on the author's machine
+> that froze the whole system. The current version loads it afterwards and, if a start with glass does not survive 30 seconds,
+> **switches glass off by itself on the next start**. `kurenai-ctl glass-reset` turns it back on. The plugin itself has not been run by the
+> assistant that wrote this module (there is no GPU in its sandbox). Read [docs/GLASS.md](docs/GLASS.md) first, which also has the
+> recovery steps from a TTY if your session ever hangs.
 
-**1. Install the dependencies**
+---
 
-```bash
-sudo pacman -S --needed hyprland quickshell kitty hyprpolkitagent \
-  xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
-# then whichever optional and service packages from the tables above you want
-```
+## Your data and privacy
 
-**2. Back up your current config**
+- **No network code, no telemetry, no remote assets.** Nothing here phones home.
+- **No `sudo`** anywhere in the shell or its scripts. Wi-Fi passwords are never typed into, stored by or passed through it.
+- Notification and clipboard text is shown as plain text and never interpreted as code.
+- Clipboard history is kept locally in `~/.cache/cliphist` (mode 600) for 30 days, can be paused in its panel, and `kurenai-ctl clip-wipe` deletes it.
+- The Run tab remembers the last 50 commands (`~/.local/share/kurenai/runhistory.json`, mode 600). A command that starts with a space is never saved.
+- The lock screen log holds states and counts only, never passwords.
 
-```bash
-cp -a ~/.config/hypr ~/.config/hypr.bak
-[ -d ~/.config/quickshell ] && cp -a ~/.config/quickshell ~/.config/quickshell.bak
-```
+The full table is in the [manual](docs/MANUAL.md#7-your-data-and-privacy).
 
-**3. Get KURENAI**
+---
 
-```bash
-git clone https://github.com/Morphious304/Kurenai-Shell.git
-cd Kurenai-Shell/kurenai
-```
+## What is tested and what is not
 
-**4. Copy the files into place**
+Claims here are kept honest on purpose.
 
-```bash
-mkdir -p ~/.config/quickshell ~/.local/bin
-cp -r quickshell/kurenai ~/.config/quickshell/
-cp -r hypr/* ~/.config/hypr/          # only the KURENAI modules, review before overwriting
-install -m755 bin/kurenai-* ~/.local/bin/
-```
-<!-- TODO: replace step 4 with the real repository layout. The paths above are an assumption (shell in quickshell/kurenai, helper scripts kurenai-ctl, kurenai-conf, kurenai-clip, kurenai-hypr, kurenai-settings, kurenai-sysmon and kurenai-lock-supervisor in bin/). Also state whether ~/.local/bin must be on PATH. -->
+**Seen working on the author's own machine** (the screenshots above): the bar, quick settings, all four launcher tabs, the shortcuts page, the lock screen, the Settings app, notification popups, themed kitty / Pacsea / lazygit, and the Firefox theme.
 
-Make sure `~/.local/bin` is on your `PATH`.
+**Checked by the assistant in a sandbox (not on a real desktop):** shell and QML syntax, the settings and config tooling in a throwaway home directory, matugen output over 720 generated palettes with contrast checks, the Settings app in an offscreen Qt rig, and a real Quickshell 0.3.2 running under a headless compositor.
+Hyprland itself was built and the Lua config validated with `--verify-config`, but a compositor cannot open a screen in that sandbox.
 
-**5. Check your system**
+**Not verified at all:** multi-monitor and fractional scaling, fingerprint unlock, idle locking through `hypridle`, the hyprglass plugin itself, and any optional tool you have not installed.
 
-```bash
-kurenai-ctl validate
-```
+If something misbehaves, start with `kurenai-ctl validate`, then [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
-This is a read-only health check of versions, services, fonts, files and conflicts. Fix anything it reports before continuing.
+---
 
-**6. Hook KURENAI into Hyprland**
+## Documentation
 
-Each of these adds **one marked line** to your Hyprland config and can be removed again with the matching `disable-*` command.
-
-```bash
-kurenai-ctl enable             # theme: borders, gaps, motion
-kurenai-ctl binds-check        # read-only: compare KURENAI keybinds with what Hyprland has active
-kurenai-ctl enable-binds       # KURENAI keybinds
-kurenai-ctl enable-autostart   # start the shell with your session
-kurenai-ctl enable-hypr        # monitor and input module (optional)
-```
-
-**7. Lock screen (do this carefully)**
-
-```bash
-kurenai-ctl lock-preview       # shows the lock screen in a normal window with the real password check; locks nothing
-kurenai-ctl enable-lock        # only once the preview works
-```
-
-**8. Start it**
-
-```bash
-kurenai-ctl start
-kurenai-ctl settings           # open the settings app
-```
-
-Optional: `kurenai-ctl desktop-entry install` adds a working "KURENAI Settings" entry to your launcher, and `kurenai-ctl enable-glass` enables the optional hyprglass integration.
-
-## Usage
-
-**Default keybinds** (the full list lives on the Shortcuts page, `kurenai-ctl shortcuts toggle`)
-
-| Keys | Action |
+| Page | About |
 |---|---|
-| `Super` + `Space` | Application launcher |
-| `Super` + `Shift` + `R` | Run a command (launcher) |
-| `Super` + `Shift` + `P` | Apps on the NVIDIA GPU (launcher) |
-| `Super` + `Shift` + `W` | Wallpaper switcher |
-| `Super` + `Alt` + `Space` | Rofi |
-| `Super` + `T` | Terminal (kitty) |
-| `Super` + `E` | File manager (yazi in kitty) |
-| `Super` + `Shift` + `Esc` | System monitor (btop in kitty) |
-| `Super` + `W` | Firefox |
-| `Super` + `Alt` + `M` | spotify-launcher |
+| [MANUAL](docs/MANUAL.md) | the complete reference this page summarises: every package, file location, shortcut, IPC call and rollback path |
+| [SETTINGS](docs/SETTINGS.md) | the 15-page Settings app |
+| [LAUNCHER](docs/LAUNCHER.md) | Apps, Run, Prime and Walls |
+| [THEME](docs/THEME.md) | wallpaper colours and app colours |
+| [FIREFOX](docs/FIREFOX.md) | the Firefox theme |
+| [LOCK-SCREEN](docs/LOCK-SCREEN.md) | how the lock works, and how to get out if it misbehaves |
+| [PANELS](docs/PANELS.md) · [CLIPBOARD-AND-SYSMON](docs/CLIPBOARD-AND-SYSMON.md) · [SHORTCUTS-PAGE](docs/SHORTCUTS-PAGE.md) | the individual panels |
+| [GLASS](docs/GLASS.md) | the optional hyprglass module |
+| [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) | symptoms and fixes |
+| [CHANGELOG](docs/CHANGELOG.md) | what changed, newest first |
 
-Inside the launcher: `Enter` launches, `↑`/`↓` moves, `Ctrl+F` toggles a favourite and `Tab` switches tab. In the Walls tab, `Shift+Enter` sets a wallpaper and keeps the launcher open, and `Ctrl+E` previews it.
+---
 
-**Colours.** Open quick settings and use *Wallpaper colours*, *Colour style*, *Keep vermilion* and *App colours*, or go to **Settings → Colours / App colours**. Settings are stored by `kurenai-conf` and can be exported and imported.
+## Credits and licence
 
-## The `kurenai-ctl` command
+- **Made with the help of artificial intelligence.** Written together with [Claude](https://claude.ai) (Anthropic). A person chose the look, ran it on their own machine and decided what stays.
+- Built on [Hyprland](https://hyprland.org), [Quickshell](https://quickshell.org), [matugen](https://github.com/InioX/matugen), [hyprglass](https://github.com/hyprnux/hyprglass) and [Rofi](https://github.com/davatorium/rofi). The optional Firefox script layer uses [fx-autoconfig](https://github.com/MrOtherGuy/fx-autoconfig) (MPL-2.0), which you install yourself.
+- Wallpapers shown in the screenshots belong to their artists and are not included.
+- **Licence: not chosen yet.** Until a `LICENSE` file is added, the usual default applies: all rights reserved by the author.
 
-`kurenai-ctl` is the control tool for the whole shell.
-
-| Command | What it does |
-|---|---|
-| `start` / `stop` / `restart` | Run the shell detached (no duplicates), stop it, or restart it |
-| `logs` / `debug` | Show the shell log, or run it in the foreground with live logs |
-| `validate` | Read-only health check |
-| `status [--json]` | Machine-readable report of shell, lock, hooks, colours and tools |
-| `backup` / `backups` | Copy `~/.config/hypr` and `~/.config/quickshell` into `~/.local/share/kurenai/backups/<timestamp>`, or list backups |
-| `enable` / `disable` | Add or remove the theme line in `hyprland.lua` |
-| `binds-check` | Compare KURENAI keybinds with the binds Hyprland has active |
-| `enable-binds` / `disable-binds` | Add or remove the keybinds line |
-| `enable-autostart` / `disable-autostart` | Start the shell with the session, or stop doing so |
-| `enable-hypr` / `disable-hypr` | Load the generated monitor and input module |
-| `enable-glass` / `disable-glass` / `glass-status` | Optional hyprglass integration |
-| `settings` | Open the settings window (works with the shell stopped) |
-| `conf <cmd>` | Settings store: `schema list get set reset`, `fav`, `recent`, `binds`, `export import path` |
-| `hypr <cmd>` | Monitors and input with a revert timer: `show monitors monitor input apply confirm revert status reset` |
-| `shortcuts [status\|toggle\|rescan]` | Talk to the shortcuts page |
-| `clip <cmd>`, `clip-status`, `clip-wipe` | Clipboard history engine, status, and wipe (pinned items are kept) |
-| `lock`, `lock-status`, `lock-preview`, `enable-lock`, `disable-lock` | Lock screen control |
-| `desktop-entry [status\|install\|remove]` | Manage the "KURENAI Settings" launcher entry |
-
-<details>
-<summary>Screenshot of <code>kurenai-ctl</code> help</summary>
-
-<img src="screenshots/kurenai-ctl.jpg" alt="kurenai-ctl usage output">
-
-</details>
-
-## Uninstall and rollback
-
-Every hook is reversible:
-
-```bash
-kurenai-ctl disable-lock
-kurenai-ctl disable-autostart
-kurenai-ctl disable-binds
-kurenai-ctl disable-hypr
-kurenai-ctl disable-glass
-kurenai-ctl disable
-kurenai-ctl stop
-```
-
-To restore your previous config, copy the backup back (`~/.config/hypr.bak` from the install steps, or any folder under `~/.local/share/kurenai/backups/`), then restart Hyprland. Remove `~/.config/quickshell/kurenai` and the `kurenai-*` scripts to remove KURENAI completely.
-
-## Troubleshooting
-
-- **Nothing shows up after install.** Run `kurenai-ctl validate`, then `kurenai-ctl debug` to see live logs.
-- **"Failed to execute: 'kurenai-settings'" in Rofi.** Run `kurenai-ctl desktop-entry install`, which rewrites the entry with the absolute program path.
-- **Keybinds do nothing.** Run `kurenai-ctl binds-check` to see which binds Hyprland has active and which conflict.
-- **Brightness keys or slider do not work.** See `kurenai-ctl media-binds`, which prints the needed change. It is only required when you are not using `udevadm`.
-- **Hyprland config errors.** Run `hyprctl configerrors`. This project needs the Lua config that arrived in Hyprland 0.55.
-- **Locked out.** Switch to a TTY (`Ctrl+Alt+F3`), log in, and run `kurenai-ctl disable-lock`.
-
-## Credits
-
-- [Hyprland](https://hypr.land), by Vaxry and contributors.
-- [Quickshell](https://quickshell.org), by outfoxxed and contributors.
-- Wallpapers in the screenshots are third-party artwork and are **not** included in this repository. All rights belong to their respective artists.
-<!-- TODO: credit the wallpaper artist(s) for the mountain/sunset image used in most screenshots, plus any fonts, icons or code you borrowed from other projects. -->
-- Designed and written with the help of artificial intelligence.
-
-## License
-
-<!-- TODO: choose a license (MIT, GPL-3.0, etc.), add a LICENSE file, and replace this line. Without a license file, others have no permission to reuse the code. -->
-License not yet specified.
+<div align="center"><sub>紅 &nbsp;·&nbsp; 余波 &nbsp;·&nbsp; kept simple, kept reversible</sub></div>
