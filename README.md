@@ -9,6 +9,7 @@ Vermilion on charcoal. Bone-white type. One look from the bar to the lock screen
   <img alt="Arch Linux" src="https://img.shields.io/badge/Arch_Linux-242424?style=for-the-badge&logo=archlinux&logoColor=F4E8BE">
   <img alt="Hyprland 0.55+ (Lua config)" src="https://img.shields.io/badge/Hyprland_0.55%2B-F04436?style=for-the-badge&logoColor=white">
   <img alt="Quickshell" src="https://img.shields.io/badge/Quickshell-242424?style=for-the-badge&logoColor=F4E8BE">
+  <img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-242424?style=for-the-badge&logoColor=F4E8BE">
   <img alt="Made with AI" src="https://img.shields.io/badge/made_with-AI_help-B8281E?style=for-the-badge">
 </p>
 
@@ -324,6 +325,6 @@ If something misbehaves, start with `kurenai-ctl validate`, then [docs/TROUBLESH
 - **Made with the help of artificial intelligence.** Written together with [Claude](https://claude.ai) (Anthropic). A person chose the look, ran it on their own machine and decided what stays.
 - Built on [Hyprland](https://hyprland.org), [Quickshell](https://quickshell.org), [matugen](https://github.com/InioX/matugen), [hyprglass](https://github.com/hyprnux/hyprglass) and [Rofi](https://github.com/davatorium/rofi). The optional Firefox script layer uses [fx-autoconfig](https://github.com/MrOtherGuy/fx-autoconfig) (MPL-2.0), which you install yourself.
 - Wallpapers shown in the screenshots belong to their artists and are not included.
-- **Licence: not chosen yet.** Until a `LICENSE` file is added, the usual default applies: all rights reserved by the author.
+- **Licence: [MIT](LICENSE).** Free to use, copy, modify and share, including commercially, as long as the licence notice stays with it. It covers this repository's code and docs only: the wallpapers in the screenshots are other people's artwork, and the tools KURENAI builds on keep their own licences.
 
 <div align="center"><sub>紅 &nbsp;·&nbsp; 余波 &nbsp;·&nbsp; kept simple, kept reversible</sub></div>
